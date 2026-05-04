@@ -89,7 +89,7 @@ thiserror   = "2"
 tokio        = { version = "1", default-features = false }
 tokio-serial = "5"
 
-embedded-io-async = "0.6"
+embedded-io-async = "0.7"
 embassy-executor  = { version = "0.9", features = ["arch-cortex-m", "executor-thread"] }
 embassy-rp        = { version = "0.10", features = ["rp2040", "time-driver", "critical-section-impl", "defmt", "unstable-pac"] }
 embassy-time      = { version = "0.5", features = ["defmt", "defmt-timestamp-uptime"] }
