@@ -1,0 +1,8 @@
+# no_std / bare-metal targets (e.g. thumbv6m-none-eabi) don't ship libtest,
+# so don't analyze the implicit `test` target — otherwise rust-analyzer fails
+# with "can't find crate for `test`".
+[cargo]
+allTargets = false
+
+[check]
+allTargets = false
