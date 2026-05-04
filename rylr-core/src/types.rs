@@ -85,3 +85,59 @@ impl defmt::Format for Error {
         }
     }
 }
+
+#[cfg(feature = "alloc")]
+pub use owned::OwnedEvent;
+
+#[cfg(feature = "alloc")]
+mod owned {
+    use super::Event;
+    use alloc::vec::Vec;
+
+    #[derive(Clone, Debug, PartialEq, Eq)]
+    pub enum OwnedEvent {
+        Recv { from: u16, data: Vec<u8>, rssi: i16, snr: i16 },
+        Ready,
+    }
+
+    impl<'a> Event<'a> {
+        pub fn to_owned(&self) -> OwnedEvent {
+            match self {
+                Event::Recv { from, data, rssi, snr } => OwnedEvent::Recv {
+                    from: *from,
+                    data: data.to_vec(),
+                    rssi: *rssi,
+                    snr: *snr,
+                },
+                Event::Ready => OwnedEvent::Ready,
+            }
+        }
+    }
+}
+
+#[cfg(all(test, feature = "alloc"))]
+mod owned_tests {
+    use super::*;
+    use alloc::vec;
+
+    #[test]
+    fn recv_to_owned_copies_data() {
+        let bytes = [0xDE, 0xAD, 0xBE, 0xEF];
+        let ev = Event::Recv { from: 5, data: &bytes, rssi: -42, snr: 8 };
+        let owned = ev.to_owned();
+        match owned {
+            OwnedEvent::Recv { from, data, rssi, snr } => {
+                assert_eq!(from, 5);
+                assert_eq!(data, vec![0xDE, 0xAD, 0xBE, 0xEF]);
+                assert_eq!(rssi, -42);
+                assert_eq!(snr, 8);
+            }
+            _ => panic!("expected Recv"),
+        }
+    }
+
+    #[test]
+    fn ready_to_owned() {
+        assert!(matches!(Event::Ready.to_owned(), OwnedEvent::Ready));
+    }
+}

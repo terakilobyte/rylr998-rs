@@ -5,3 +5,6 @@ extern crate alloc;
 
 mod types;
 pub use types::{Command, Error, Event, Poll, Response, RfParams};
+
+#[cfg(feature = "alloc")]
+pub use types::OwnedEvent;
