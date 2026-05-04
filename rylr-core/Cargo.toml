@@ -1,0 +1,13 @@
+[package]
+name = "rylr-core"
+version.workspace = true
+edition.workspace = true
+
+[features]
+default = []
+alloc = []
+defmt = ["dep:defmt"]
+
+[dependencies]
+heapless = { workspace = true }
+defmt    = { workspace = true, optional = true }

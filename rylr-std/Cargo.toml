@@ -1,0 +1,9 @@
+[package]
+name = "rylr-std"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+rylr-core  = { workspace = true, features = ["alloc"] }
+serialport = { workspace = true }
+thiserror  = { workspace = true }

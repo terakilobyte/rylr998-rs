@@ -1,0 +1,10 @@
+[package]
+name = "rylr-tokio"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+rylr-core    = { workspace = true, features = ["alloc"] }
+tokio        = { workspace = true, features = ["rt", "io-util", "sync", "macros", "time"] }
+tokio-serial = { workspace = true }
+thiserror    = { workspace = true }
