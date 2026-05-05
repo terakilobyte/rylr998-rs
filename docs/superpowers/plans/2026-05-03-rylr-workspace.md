@@ -571,6 +571,10 @@ impl<'b> Writer<'b> {
 
 #[cfg(test)]
 mod tests {
+    // The crate is `no_std`, so the test module doesn't get the implicit
+    // `std` prelude. `cargo test` links std anyway, so we just opt back in.
+    extern crate std;
+    use std::string::String;
     use super::*;
     use crate::RfParams;
 
@@ -632,7 +636,7 @@ pub use encode::encode;
 cargo test -p rylr-core
 ```
 
-Expected: 13 passed (encode module).
+Expected: 12 passed (encode module).
 
 - [ ] **Step 5: Commit**
 
