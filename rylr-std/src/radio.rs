@@ -40,3 +40,44 @@ impl<P: Read + Write> Radio<P> {
         Self { driver: Driver::new(), port, events: VecDeque::new() }
     }
 }
+
+use rylr_core::{Poll, Response};
+use std::time::Instant;
+
+impl<P: Read + Write> Radio<P> {
+    /// Drive the state machine and the underlying port until the supplied
+    /// predicate returns `Some`, or `deadline` is reached.
+    ///
+    /// ## EXERCISE (rylr-std)
+    ///
+    /// Implement the body. Per iteration:
+    ///
+    /// 1. While `self.driver.poll()` returns `Poll::NeedTx(bytes)`:
+    ///       write all `bytes` to `self.port`, then `self.driver.ack_tx(n)`.
+    ///       Propagate I/O errors as `Error::Io`.
+    /// 2. Drain the driver:
+    ///    Loop calling `self.driver.poll()`:
+    ///      - `Poll::Event(e)`  -> push `e.into_owned()` to `self.events`,
+    ///                             continue.
+    ///      - `Poll::Response(r)` -> hand to `want`. If `Some(out)`, return
+    ///                             `out`. If `None`, continue.
+    ///      - `Poll::NeedTx(_)` -> handle as in step 1.
+    ///      - `Poll::Idle`      -> break out of the inner loop.
+    /// 3. Read up to 256 bytes from `self.port` into a stack buffer with
+    ///    a 50 ms read timeout (already configured on the port). Wrap
+    ///    `WouldBlock` / `TimedOut` as "no bytes this round" — not an
+    ///    error. Feed accepted bytes via `self.driver.push_rx`.
+    /// 4. Check `Instant::now() >= deadline`. If so, return `Err(Timeout)`.
+    pub(crate) fn pump_until<R, F>(
+        &mut self,
+        deadline: Instant,
+        mut want: F,
+    ) -> Result<R>
+    where
+        F: FnMut(Response<'_>) -> Option<Result<R>>,
+    {
+        // TODO: implement per the rules above.
+        let _ = (deadline, &mut want);
+        unimplemented!("Radio::pump_until — exercise")
+    }
+}
