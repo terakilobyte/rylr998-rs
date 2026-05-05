@@ -45,6 +45,11 @@ pub struct Driver {
     /// (i.e. `AT+FACTORY` is in flight).
     pub(crate) awaiting_ready_as_ok: bool,
     pub(crate) pending_kind: Option<AwaitKind>,
+    /// Scratch space for poll() to copy a line into before draining rx.
+    #[allow(dead_code)]
+    pub(crate) line_buf: [u8; 288],
+    #[allow(dead_code)]
+    pub(crate) line_buf_len: usize,
 }
 
 impl Driver {
@@ -56,6 +61,8 @@ impl Driver {
             state: State::Idle,
             awaiting_ready_as_ok: false,
             pending_kind: None,
+            line_buf: [0u8; 288],
+            line_buf_len: 0,
         }
     }
 
@@ -112,9 +119,54 @@ impl Driver {
         }
     }
 
+    /// Drive the state machine.
+    ///
+    /// ## EXERCISE
+    ///
+    /// Priority order on each call:
+    /// 1. If we have undelivered TX bytes (`self.tx` has bytes that haven't
+    ///    been handed out as `NeedTx` yet), return `Poll::NeedTx(slice)`.
+    ///    Track them as in-flight via `self.tx_in_flight` so `ack_tx` can
+    ///    drain them.
+    /// 2. Try to find a complete unsolicited event in `self.rx`:
+    ///    a. Look for `\r\n`. If absent, no events available.
+    ///    b. If the line starts with `+RCV` or `+READY`, parse it via
+    ///       `crate::decode::parse_event`. Drain the line + `\r\n` from
+    ///       `self.rx` and return `Poll::Event(...)`.
+    ///    c. If `awaiting_ready_as_ok` is true and the line is `+READY`,
+    ///       return `Poll::Response(Response::Ok)` instead, transition to
+    ///       `Idle`, clear `awaiting_ready_as_ok`, drain the line.
+    /// 3. If we're in state `Awaiting`, look for a complete response line
+    ///    (`+OK`, `+ERR=N`, or the matching `+<KEY>=...`) and parse via
+    ///    `decode::parse_response`. On match, drain, transition to `Idle`,
+    ///    return `Poll::Response(...)`.
+    /// 4. Otherwise, return `Poll::Idle`.
+    ///
+    /// ### Hints
+    ///
+    /// - You'll want a private helper `fn next_line_end(&self) -> Option<usize>`
+    ///   that returns the index of `\r` if a complete `\r\n` is buffered.
+    /// - Use `self.rx.as_slice()[..end]` for the line bytes; then
+    ///   `self.rx.copy_within(end + 2.., 0)` + `self.rx.truncate(...)` to
+    ///   drain. (`heapless::Vec` has no `drain`, so manual copy is the move.)
+    /// - The borrow returned in `Poll::Event` / `Poll::Response` must outlive
+    ///   the drain. Translation: parse first, then drain. Or parse into an
+    ///   intermediate owned representation before draining — but that adds
+    ///   an alloc. Cleanest: take a snapshot of the line into a stack buffer,
+    ///   parse from that, then drain.
+    ///
+    /// ### Note on borrowing
+    ///
+    /// Returning `Poll::Event { data: &[u8] }` from `&mut self` while the
+    /// data lives in `self.rx` requires that we *not* mutate `self.rx`
+    /// between parse and return. The simplest solution: copy the line into
+    /// a small `[u8; 280]` field on `Driver` (`line_buf`), drain `self.rx`
+    /// of that line *before* parsing, then parse from `line_buf`. The borrow
+    /// returned then ties to `&self.line_buf`, which `&mut self` already
+    /// reserves.
     pub fn poll(&mut self) -> Poll<'_> {
-        // EXERCISE: see Task 7.
-        unimplemented!("Driver::poll — Task 7 exercise")
+        // TODO: implement per the rules above.
+        unimplemented!("Driver::poll — exercise")
     }
 }
 
@@ -163,5 +215,95 @@ mod tests {
         // First two bytes drained; the surviving bytes should be b"\r\n".
         assert_eq!(d.tx.len(), 2);
         assert_eq!(&d.tx[..], b"\r\n");
+    }
+}
+
+#[cfg(all(test, feature = "alloc"))]
+mod poll_tests {
+    use super::*;
+    use crate::{Event, Response};
+    use alloc::vec::Vec;
+
+    /// Helper: drain TX bytes the driver wants sent, ack them, and return
+    /// what was sent for assertions.
+    fn drain_tx(d: &mut Driver) -> Vec<u8> {
+        let mut out = Vec::new();
+        loop {
+            match d.poll() {
+                Poll::NeedTx(bytes) => {
+                    out.extend_from_slice(bytes);
+                    let n = bytes.len();
+                    d.ack_tx(n);
+                }
+                _ => return out,
+            }
+        }
+    }
+
+    #[test]
+    fn set_address_round_trip() {
+        let mut d = Driver::new();
+        d.submit(Command::SetAddress(5)).unwrap();
+
+        assert_eq!(drain_tx(&mut d), b"AT+ADDRESS=5\r\n");
+
+        d.push_rx(b"+OK\r\n").unwrap();
+        assert!(matches!(d.poll(), Poll::Response(Response::Ok)));
+        assert!(matches!(d.poll(), Poll::Idle));
+    }
+
+    #[test]
+    fn get_address_returns_value() {
+        let mut d = Driver::new();
+        d.submit(Command::GetAddress).unwrap();
+        let _ = drain_tx(&mut d);
+        d.push_rx(b"+ADDRESS=5\r\n").unwrap();
+        match d.poll() {
+            Poll::Response(Response::Address(5)) => {}
+            other => panic!("unexpected: {:?}", other),
+        }
+    }
+
+    #[test]
+    fn err_response() {
+        let mut d = Driver::new();
+        d.submit(Command::Ping).unwrap();
+        let _ = drain_tx(&mut d);
+        d.push_rx(b"+ERR=4\r\n").unwrap();
+        assert!(matches!(d.poll(), Poll::Response(Response::Err(4))));
+    }
+
+    #[test]
+    fn factory_reset_resolves_on_ready() {
+        let mut d = Driver::new();
+        d.submit(Command::FactoryReset).unwrap();
+        let _ = drain_tx(&mut d);
+        d.push_rx(b"+OK\r\n+READY\r\n").unwrap();
+        // Implementation choice: either +OK or +READY may resolve the
+        // command. Both are acceptable; subsequent poll() must be Idle.
+        assert!(matches!(d.poll(), Poll::Response(Response::Ok)));
+    }
+
+    #[test]
+    fn unsolicited_recv() {
+        let mut d = Driver::new();
+        d.push_rx(b"+RCV=2,5,hello,-42,8\r\n").unwrap();
+        match d.poll() {
+            Poll::Event(Event::Recv { from: 2, data, rssi: -42, snr: 8 }) => {
+                assert_eq!(data, b"hello");
+            }
+            other => panic!("unexpected: {:?}", other),
+        }
+    }
+
+    #[test]
+    fn recv_during_command_is_delivered_first() {
+        let mut d = Driver::new();
+        d.submit(Command::GetAddress).unwrap();
+        let _ = drain_tx(&mut d);
+        d.push_rx(b"+RCV=2,2,hi,-30,3\r\n+ADDRESS=5\r\n").unwrap();
+        // Per priority order: events drain before responses.
+        assert!(matches!(d.poll(), Poll::Event(_)));
+        assert!(matches!(d.poll(), Poll::Response(Response::Address(5))));
     }
 }
