@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
-rylr-core    = { workspace = true, features = ["alloc"] }
+rylr-core    = { workspace = true, features = ["alloc", "std"] }
 tokio        = { workspace = true, features = ["rt", "io-util", "sync", "macros", "time"] }
 tokio-serial = { workspace = true }
 thiserror    = { workspace = true }
