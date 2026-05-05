@@ -101,13 +101,14 @@ mod owned {
     }
 
     impl<'a> Event<'a> {
-        pub fn to_owned(&self) -> OwnedEvent {
+        #[must_use]
+        pub fn into_owned(self) -> OwnedEvent {
             match self {
                 Event::Recv { from, data, rssi, snr } => OwnedEvent::Recv {
-                    from: *from,
+                    from,
                     data: data.to_vec(),
-                    rssi: *rssi,
-                    snr: *snr,
+                    rssi,
+                    snr,
                 },
                 Event::Ready => OwnedEvent::Ready,
             }
@@ -121,10 +122,10 @@ mod owned_tests {
     use alloc::vec;
 
     #[test]
-    fn recv_to_owned_copies_data() {
+    fn recv_into_owned_copies_data() {
         let bytes = [0xDE, 0xAD, 0xBE, 0xEF];
         let ev = Event::Recv { from: 5, data: &bytes, rssi: -42, snr: 8 };
-        let owned = ev.to_owned();
+        let owned = ev.into_owned();
         match owned {
             OwnedEvent::Recv { from, data, rssi, snr } => {
                 assert_eq!(from, 5);
@@ -137,7 +138,7 @@ mod owned_tests {
     }
 
     #[test]
-    fn ready_to_owned() {
-        assert!(matches!(Event::Ready.to_owned(), OwnedEvent::Ready));
+    fn ready_into_owned() {
+        assert!(matches!(Event::Ready.into_owned(), OwnedEvent::Ready));
     }
 }

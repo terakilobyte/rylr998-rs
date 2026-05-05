@@ -130,7 +130,7 @@ pub enum OwnedEvent {
 
 #[cfg(feature = "alloc")]
 impl<'a> Event<'a> {
-    pub fn to_owned(&self) -> OwnedEvent;
+    pub fn into_owned(self) -> OwnedEvent;
 }
 ```
 

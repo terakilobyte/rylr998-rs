@@ -402,10 +402,10 @@ mod owned_tests {
     use alloc::vec;
 
     #[test]
-    fn recv_to_owned_copies_data() {
+    fn recv_into_owned_copies_data() {
         let bytes = [0xDE, 0xAD, 0xBE, 0xEF];
         let ev = Event::Recv { from: 5, data: &bytes, rssi: -42, snr: 8 };
-        let owned = ev.to_owned();
+        let owned = ev.into_owned();
         match owned {
             OwnedEvent::Recv { from, data, rssi, snr } => {
                 assert_eq!(from, 5);
@@ -418,8 +418,8 @@ mod owned_tests {
     }
 
     #[test]
-    fn ready_to_owned() {
-        assert!(matches!(Event::Ready.to_owned(), OwnedEvent::Ready));
+    fn ready_into_owned() {
+        assert!(matches!(Event::Ready.into_owned(), OwnedEvent::Ready));
     }
 }
 ```
@@ -430,9 +430,9 @@ mod owned_tests {
 cargo test -p rylr-core --features alloc -- owned_tests
 ```
 
-Expected: compile error — `OwnedEvent` undefined, `to_owned` undefined.
+Expected: compile error — `OwnedEvent` undefined, `into_owned` undefined.
 
-- [ ] **Step 3: Add `OwnedEvent` and `Event::to_owned`**
+- [ ] **Step 3: Add `OwnedEvent` and `Event::into_owned`**
 
 Append to `rylr-core/src/types.rs` (above the test module):
 
@@ -452,13 +452,14 @@ mod owned {
     }
 
     impl<'a> Event<'a> {
-        pub fn to_owned(&self) -> OwnedEvent {
+        #[must_use]
+        pub fn into_owned(self) -> OwnedEvent {
             match self {
                 Event::Recv { from, data, rssi, snr } => OwnedEvent::Recv {
-                    from: *from,
+                    from,
                     data: data.to_vec(),
-                    rssi: *rssi,
-                    snr: *snr,
+                    rssi,
+                    snr,
                 },
                 Event::Ready => OwnedEvent::Ready,
             }
@@ -1545,7 +1546,7 @@ impl<P: Read + Write> Radio<P> {
     ///       Propagate I/O errors as `Error::Io`.
     /// 2. Drain the driver:
     ///    Loop calling `self.driver.poll()`:
-    ///      - `Poll::Event(e)`  -> push `e.to_owned()` to `self.events`,
+    ///      - `Poll::Event(e)`  -> push `e.into_owned()` to `self.events`,
     ///                             continue.
     ///      - `Poll::Response(r)` -> hand to `want`. If `Some(out)`, return
     ///                             `out`. If `None`, continue.
@@ -2312,7 +2313,7 @@ Replace `rylr-tokio/src/lib.rs` with:
 //!   `tokio::select!` against `cmd_rx.recv()` so commands and incoming bytes
 //!   don't starve each other.
 //! - `Driver::poll`'s borrow lifetime ties to `&mut self`. To send an event
-//!   over a channel, call `.to_owned()` first.
+//!   over a channel, call `.into_owned()` first.
 
 use rylr_core::{Command, Driver, OwnedEvent};
 use std::path::Path;
