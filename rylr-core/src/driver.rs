@@ -156,10 +156,12 @@ mod tests {
     fn ack_tx_shifts_buffer() {
         let mut d = Driver::new();
         d.submit(Command::Ping).unwrap();
+        // tx now holds b"AT\r\n" (4 bytes).
         // Pretend poll() handed out the bytes:
         d.tx_in_flight = d.tx.len();
-        let total = d.tx.len();
         d.ack_tx(2);
-        assert_eq!(d.tx.len(), total - 2);
+        // First two bytes drained; the surviving bytes should be b"\r\n".
+        assert_eq!(d.tx.len(), 2);
+        assert_eq!(&d.tx[..], b"\r\n");
     }
 }
