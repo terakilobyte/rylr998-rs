@@ -2,9 +2,17 @@
 name = "rylr-embassy"
 version.workspace = true
 edition.workspace = true
+build = "build.rs"
+
+[lib]
+test = false
+
+[[example]]
+name = "pico_smoke"
+test = false
 
 [dependencies]
-rylr-core         = { workspace = true }
+rylr-core         = { workspace = true, features = ["defmt"] }
 embedded-io-async = { workspace = true }
 embassy-rp        = { workspace = true }
 embassy-time      = { workspace = true }
