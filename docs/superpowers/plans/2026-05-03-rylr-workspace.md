@@ -123,6 +123,9 @@ edition.workspace = true
 [features]
 default = []
 alloc = []
+# `std` opts in to `impl std::error::Error for Error`, which `thiserror`'s
+# `#[from] rylr_core::Error` requires from `rylr-std` and `rylr-tokio`.
+std = []
 defmt = ["dep:defmt"]
 
 [dependencies]
@@ -148,7 +151,7 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
-rylr-core  = { workspace = true, features = ["alloc"] }
+rylr-core  = { workspace = true, features = ["alloc", "std"] }
 serialport = { workspace = true }
 thiserror  = { workspace = true }
 ```
