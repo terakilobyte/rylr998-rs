@@ -6,6 +6,10 @@ use heapless::Vec as HVec;
 pub(crate) const RX_BUF: usize = 512;
 pub(crate) const TX_BUF: usize = 512;
 
+// `State::Awaiting.kind` and `AwaitKind::Query.0` aren't read yet — they're
+// consumed by the `poll()` body that lives as the user's exercise (Task 7).
+// Once `poll` reads them, drop these allows.
+#[allow(dead_code)]
 #[derive(Default, Clone, Copy)]
 pub(crate) enum State {
     #[default]
@@ -17,6 +21,7 @@ pub(crate) enum State {
     Awaiting { kind: AwaitKind },
 }
 
+#[allow(dead_code)]
 #[derive(Clone, Copy)]
 pub(crate) enum AwaitKind {
     /// Setter / Ping / FactoryReset — expects `+OK` or `+ERR`.
