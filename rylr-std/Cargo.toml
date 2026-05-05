@@ -4,6 +4,6 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
-rylr-core  = { workspace = true, features = ["alloc"] }
+rylr-core  = { workspace = true, features = ["alloc", "std"] }
 serialport = { workspace = true }
 thiserror  = { workspace = true }

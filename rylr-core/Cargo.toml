@@ -6,6 +6,7 @@ edition.workspace = true
 [features]
 default = []
 alloc = []
+std = []
 defmt = ["dep:defmt"]
 
 [dependencies]
