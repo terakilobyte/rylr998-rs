@@ -11,6 +11,9 @@ use std::time::Duration;
 
 pub struct Radio<P: Read + Write = Box<dyn serialport::SerialPort>> {
     pub(crate) driver: Driver,
+    /// `port` is read once `pump_until` (the user's exercise) is implemented;
+    /// drop the allow then.
+    #[allow(dead_code)]
     pub(crate) port: P,
     pub(crate) events: VecDeque<OwnedEvent>,
 }
@@ -41,6 +44,9 @@ impl<P: Read + Write> Radio<P> {
     }
 }
 
+// `Poll` is unused until `pump_until` (user exercise) is implemented;
+// drop this allow then.
+#[allow(unused_imports)]
 use rylr_core::{Poll, Response};
 use std::time::Instant;
 
