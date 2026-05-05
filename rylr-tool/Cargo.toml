@@ -4,6 +4,7 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
-rylr-std = { workspace = true }
-clap     = { workspace = true }
-ctrlc    = { workspace = true }
+rylr-std   = { workspace = true }
+clap       = { workspace = true }
+ctrlc      = { workspace = true }
+serialport = { workspace = true }
