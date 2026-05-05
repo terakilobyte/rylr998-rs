@@ -2,3 +2,6 @@
 
 mod error;
 pub use error::{Error, Result};
+
+mod port;
+pub use port::discover;
