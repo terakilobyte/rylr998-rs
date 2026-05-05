@@ -80,6 +80,12 @@ mod tests {
 
     #[test] fn ping()           { assert_eq!(encode_to_string(Command::Ping), "AT\r\n"); }
     #[test] fn get_address()    { assert_eq!(encode_to_string(Command::GetAddress), "AT+ADDRESS?\r\n"); }
+    #[test] fn get_network_id() { assert_eq!(encode_to_string(Command::GetNetworkId), "AT+NETWORKID?\r\n"); }
+    #[test] fn get_band()       { assert_eq!(encode_to_string(Command::GetBand), "AT+BAND?\r\n"); }
+    #[test] fn get_parameters() { assert_eq!(encode_to_string(Command::GetParameters), "AT+PARAMETER?\r\n"); }
+    #[test] fn get_crfop()      { assert_eq!(encode_to_string(Command::GetCrfop), "AT+CRFOP?\r\n"); }
+    #[test] fn get_uid()        { assert_eq!(encode_to_string(Command::GetUid), "AT+UID?\r\n"); }
+    #[test] fn get_version()    { assert_eq!(encode_to_string(Command::GetVersion), "AT+VER?\r\n"); }
     #[test] fn set_address()    { assert_eq!(encode_to_string(Command::SetAddress(5)), "AT+ADDRESS=5\r\n"); }
     #[test] fn set_address_zero() { assert_eq!(encode_to_string(Command::SetAddress(0)), "AT+ADDRESS=0\r\n"); }
     #[test] fn set_address_max()  { assert_eq!(encode_to_string(Command::SetAddress(65535)), "AT+ADDRESS=65535\r\n"); }
@@ -99,8 +105,8 @@ mod tests {
 
     #[test]
     fn tx_overflow() {
-        let mut buf = [0u8; 4]; // too small for "AT\r\n"
-        assert_eq!(encode(Command::Ping, &mut buf), Ok(4));  // exactly fits
+        let mut buf = [0u8; 4]; // exactly fits "AT\r\n"
+        assert_eq!(encode(Command::Ping, &mut buf), Ok(4));
         let mut buf = [0u8; 3];
         assert_eq!(encode(Command::Ping, &mut buf), Err(Error::TxOverflow));
     }
