@@ -160,7 +160,7 @@ impl Driver {
     /// Returning `Poll::Event { data: &[u8] }` from `&mut self` while the
     /// data lives in `self.rx` requires that we *not* mutate `self.rx`
     /// between parse and return. The simplest solution: copy the line into
-    /// a small `[u8; 280]` field on `Driver` (`line_buf`), drain `self.rx`
+    /// a small `[u8; 288]` field on `Driver` (`line_buf`), drain `self.rx`
     /// of that line *before* parsing, then parse from `line_buf`. The borrow
     /// returned then ties to `&self.line_buf`, which `&mut self` already
     /// reserves.
@@ -280,8 +280,15 @@ mod poll_tests {
         let _ = drain_tx(&mut d);
         d.push_rx(b"+OK\r\n+READY\r\n").unwrap();
         // Implementation choice: either +OK or +READY may resolve the
-        // command. Both are acceptable; subsequent poll() must be Idle.
+        // command. Both are acceptable.
         assert!(matches!(d.poll(), Poll::Response(Response::Ok)));
+        // The leftover line (whichever wasn't consumed by the response)
+        // must be cleanly handled — either as a follow-up Ready event
+        // or drained internally as Idle. Both are correct.
+        match d.poll() {
+            Poll::Idle | Poll::Event(Event::Ready) => {}
+            other => panic!("unexpected after factory_reset: {:?}", other),
+        }
     }
 
     #[test]
