@@ -31,11 +31,21 @@ use rylr998_core::{Command, Driver, Event, Poll, Response, RfParams};
 const DEFAULT_TIMEOUT: Duration = Duration::from_secs(1);
 const FACTORY_RESET_TIMEOUT: Duration = Duration::from_secs(2);
 
+/// Failure modes for the embassy driver.
+///
+/// `E` is the associated error type of the wrapped UART's
+/// `embedded_io_async::ErrorType` impl.
 #[derive(Debug)]
 pub enum Error<E> {
+    /// A protocol-layer error from [`rylr998_core`].
     Core(rylr998_core::Error),
+    /// An I/O error from the underlying UART.
     Io(E),
+    /// A command did not receive its response within the per-call
+    /// deadline.
     Timeout,
+    /// The radio replied with `+ERR=<code>`. The numeric code is from
+    /// the REYAX AT command manual.
     Radio(u8),
 }
 
@@ -45,6 +55,19 @@ impl<E> From<rylr998_core::Error> for Error<E> {
     }
 }
 
+/// `no_std` async driver for a RYLR998 attached to an
+/// `embedded_io_async::Read + Write` UART.
+///
+/// Wraps a [`rylr998_core::Driver`] and an `embedded_io_async` UART;
+/// every method submits one `AT+…` line and awaits its response, with
+/// a 1 s deadline (`factory_reset` uses 2 s). Unsolicited `+RCV`
+/// events arriving while a command is in flight are forwarded to
+/// `defmt::info!` and otherwise dropped — to capture them, drive the
+/// radio with [`next_event`](Self::next_event) when not otherwise
+/// commanding it.
+///
+/// No allocator is required: the entire pipeline lives on the stack
+/// or inside the `Driver`'s fixed buffers.
 pub struct Radio<UART> {
     driver: Driver,
     uart: UART,
@@ -77,6 +100,9 @@ impl<UART> Radio<UART>
 where
     UART: embedded_io_async::Read + embedded_io_async::Write,
 {
+    /// Wrap an `embedded_io_async` UART. The caller is responsible for
+    /// configuring the UART at the RYLR998's baud (115 200 by default;
+    /// see [`rylr998_core::BAUD`]).
     pub fn new(uart: UART) -> Self {
         let driver = Driver::new();
         Self { uart, driver }
@@ -86,16 +112,19 @@ where
         Instant::now() + d
     }
 
+    /// Send `AT` and await `+OK`. Useful as a liveness check.
     pub async fn ping(&mut self) -> Result<(), Error<UART::Error>> {
         self.driver.submit(Command::Ping)?;
         self.pump_until(Self::deadline(DEFAULT_TIMEOUT), wait_ok).await
     }
 
+    /// Set this node's address (`AT+ADDRESS=<n>`).
     pub async fn set_address(&mut self, n: u16) -> Result<(), Error<UART::Error>> {
         self.driver.submit(Command::SetAddress(n))?;
         self.pump_until(Self::deadline(DEFAULT_TIMEOUT), wait_ok).await
     }
 
+    /// Query this node's address (`AT+ADDRESS?`).
     pub async fn address(&mut self) -> Result<u16, Error<UART::Error>> {
         self.driver.submit(Command::GetAddress)?;
         self.pump_until(Self::deadline(DEFAULT_TIMEOUT), |r| match r {
@@ -106,11 +135,14 @@ where
         .await
     }
 
+    /// Set the network ID (`AT+NETWORKID=<n>`). Peers must share an ID
+    /// to communicate.
     pub async fn set_network_id(&mut self, n: u8) -> Result<(), Error<UART::Error>> {
         self.driver.submit(Command::SetNetworkId(n))?;
         self.pump_until(Self::deadline(DEFAULT_TIMEOUT), wait_ok).await
     }
 
+    /// Query the network ID (`AT+NETWORKID?`).
     pub async fn network_id(&mut self) -> Result<u8, Error<UART::Error>> {
         self.driver.submit(Command::GetNetworkId)?;
         self.pump_until(Self::deadline(DEFAULT_TIMEOUT), |r| match r {
@@ -121,11 +153,13 @@ where
         .await
     }
 
+    /// Set the carrier frequency in Hz (`AT+BAND=<hz>`).
     pub async fn set_band(&mut self, hz: u32) -> Result<(), Error<UART::Error>> {
         self.driver.submit(Command::SetBand(hz))?;
         self.pump_until(Self::deadline(DEFAULT_TIMEOUT), wait_ok).await
     }
 
+    /// Query the carrier frequency in Hz (`AT+BAND?`).
     pub async fn band(&mut self) -> Result<u32, Error<UART::Error>> {
         self.driver.submit(Command::GetBand)?;
         self.pump_until(Self::deadline(DEFAULT_TIMEOUT), |r| match r {
@@ -136,11 +170,13 @@ where
         .await
     }
 
+    /// Set LoRa PHY parameters (`AT+PARAMETER=<sf>,<bw>,<cr>,<preamble>`).
     pub async fn set_parameters(&mut self, p: RfParams) -> Result<(), Error<UART::Error>> {
         self.driver.submit(Command::SetParameters(p))?;
         self.pump_until(Self::deadline(DEFAULT_TIMEOUT), wait_ok).await
     }
 
+    /// Query the LoRa PHY parameters (`AT+PARAMETER?`).
     pub async fn parameters(&mut self) -> Result<RfParams, Error<UART::Error>> {
         self.driver.submit(Command::GetParameters)?;
         self.pump_until(Self::deadline(DEFAULT_TIMEOUT), |r| match r {
@@ -151,6 +187,7 @@ where
         .await
     }
 
+    /// Query the configured RF output power (`AT+CRFOP?`).
     pub async fn crfop(&mut self) -> Result<u8, Error<UART::Error>> {
         self.driver.submit(Command::GetCrfop)?;
         self.pump_until(Self::deadline(DEFAULT_TIMEOUT), |r| match r {
@@ -164,11 +201,16 @@ where
     // `uid` and `version` return owned Strings in the std/tokio ports; here we'd
     // need a `heapless::String<N>` to avoid alloc. Skipped for the smoke test.
 
+    /// Send `AT+RESET` and await the module's `+READY` reboot signal.
+    ///
+    /// Uses an extended (2 s) timeout for the post-reset settling time.
     pub async fn factory_reset(&mut self) -> Result<(), Error<UART::Error>> {
         self.driver.submit(Command::FactoryReset)?;
         self.pump_until(Self::deadline(FACTORY_RESET_TIMEOUT), wait_ok).await
     }
 
+    /// Transmit `data` to the node at address `to`
+    /// (`AT+SEND=<to>,<len>,<data>`). Use `to = 0` to broadcast.
     pub async fn send(&mut self, to: u16, data: &[u8]) -> Result<(), Error<UART::Error>> {
         self.driver.submit(Command::Send { to, data })?;
         self.pump_until(Self::deadline(DEFAULT_TIMEOUT), wait_ok).await

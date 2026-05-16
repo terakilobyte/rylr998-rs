@@ -36,6 +36,18 @@ pub(crate) enum QueryKey {
     Version,
 }
 
+/// State machine that turns RYLR998 protocol traffic into a sequence of
+/// [`Poll`] steps.
+///
+/// `Driver` does no I/O: callers feed it raw UART bytes via
+/// [`push_rx`](Driver::push_rx), drain its TX queue when
+/// [`poll`](Driver::poll) returns [`Poll::NeedTx`], and acknowledge sent
+/// bytes via [`ack_tx`](Driver::ack_tx). The wrapper crates
+/// (`rylr998-std`, `rylr998-tokio`, `rylr998-embassy`) compose this loop
+/// with a real transport.
+///
+/// Buffers are fixed-size and stack-allocated; the driver is `no_std`
+/// and never allocates.
 pub struct Driver {
     pub(crate) rx: HVec<u8, RX_BUF>,
     pub(crate) tx: HVec<u8, TX_BUF>,
@@ -67,6 +79,7 @@ impl Default for Driver {
 }
 
 impl Driver {
+    /// Construct a fresh driver with empty buffers and idle state.
     pub fn new() -> Self {
         Self {
             rx: HVec::new(),
@@ -80,6 +93,17 @@ impl Driver {
         }
     }
 
+    /// Queue a command for transmission.
+    ///
+    /// The encoded `AT+…` line is buffered immediately; subsequent calls
+    /// to [`poll`](Self::poll) will yield it via [`Poll::NeedTx`] and
+    /// then await the matching [`Response`](crate::Response).
+    ///
+    /// # Errors
+    ///
+    /// - [`Error::Busy`] if another command is already in flight.
+    /// - [`Error::TxOverflow`] if the encoded line exceeds the TX buffer
+    ///   (only realistic for very large `Command::Send` payloads).
     pub fn submit(&mut self, cmd: Command<'_>) -> Result<(), Error> {
         if !matches!(self.state, State::Idle) {
             return Err(Error::Busy);
@@ -106,6 +130,15 @@ impl Driver {
         Ok(())
     }
 
+    /// Feed bytes read from the UART into the RX buffer.
+    ///
+    /// Returns the number of bytes accepted (always `bytes.len()` on
+    /// success).
+    ///
+    /// # Errors
+    ///
+    /// [`Error::RxOverflow`] if `bytes` does not fit in the remaining
+    /// RX-buffer space. As much as fits is appended before returning.
     pub fn push_rx(&mut self, bytes: &[u8]) -> Result<usize, Error> {
         let room = self.rx.capacity() - self.rx.len();
         if bytes.len() > room {
@@ -117,6 +150,11 @@ impl Driver {
         Ok(bytes.len())
     }
 
+    /// Acknowledge that `n` bytes from a prior [`Poll::NeedTx`] have
+    /// been written to the UART.
+    ///
+    /// Call this after every successful write so the driver can release
+    /// the bytes from its TX queue and advance the state machine.
     pub fn ack_tx(&mut self, n: usize) {
         let n = n.min(self.tx_in_flight);
         // Shift the first `n` bytes off `self.tx` (heapless::Vec has no drain).
@@ -167,6 +205,16 @@ impl Driver {
         }
     }
 
+    /// Take one step of the state machine.
+    ///
+    /// Returns whatever the driver wants to do next: emit bytes
+    /// ([`Poll::NeedTx`]), surface a parsed line as a
+    /// [`Response`](Poll::Response) or an [`Event`](Poll::Event), or
+    /// signal that it's [`Idle`](Poll::Idle) and needs more RX bytes.
+    ///
+    /// Drain by calling in a loop until you see `Poll::Idle`, then read
+    /// more bytes from the UART and feed them via
+    /// [`push_rx`](Self::push_rx) before polling again.
     pub fn poll(&mut self) -> Poll<'_> {
         if self.tx_in_flight < self.tx.len() {
             let bytes = &self.tx[self.tx_in_flight..];

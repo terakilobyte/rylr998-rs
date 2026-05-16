@@ -33,32 +33,56 @@ use tokio_serial::SerialPortBuilderExt;
 const DEFAULT_TIMEOUT: Duration = Duration::from_secs(1);
 const FACTORY_RESET_TIMEOUT: Duration = Duration::from_secs(2);
 
+/// Failure modes for the async driver.
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
+    /// A protocol-layer error from [`rylr998_core`].
     #[error("core: {0}")]
     Core(#[from] rylr998_core::Error),
+    /// An I/O error from the underlying serial port.
     #[error("io: {0}")]
     Io(#[from] std::io::Error),
+    /// An error opening the serial port.
     #[error("serial: {0}")]
     Serial(#[from] tokio_serial::Error),
+    /// A command did not receive its response within the per-call
+    /// deadline.
     #[error("timeout")]
     Timeout,
+    /// The radio replied with `+ERR=<code>`. The numeric code is from
+    /// the REYAX AT command manual.
     #[error("radio error code {0}")]
     Radio(u8),
+    /// The background reader/writer task has exited, usually because
+    /// the serial port closed.
     #[error("background task ended")]
     Closed,
 }
 
+/// Heap-backed [`Response`] variant.
+///
+/// The driver's background task only sees the `'static`-bounded form,
+/// so the channel between the task and [`AsyncRadio`] carries this
+/// owned analogue of [`rylr998_core::Response`].
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum OwnedResponse {
+    /// `+OK` — command accepted.
     Ok,
+    /// `+ERR=<code>`.
     Err(u8),
+    /// Reply to a `GetAddress` request.
     Address(u16),
+    /// Reply to a `GetNetworkId` request.
     NetworkId(u8),
+    /// Reply to a `GetBand` request.
     Band(u32),
+    /// Reply to a `GetParameters` request.
     Parameters(RfParams),
+    /// Reply to a `GetCrfop` request.
     Crfop(u8),
+    /// Reply to a `GetUid` request.
     Uid(String),
+    /// Reply to a `GetVersion` request.
     Version(String),
 }
 
@@ -78,22 +102,46 @@ impl From<Response<'_>> for OwnedResponse {
     }
 }
 
+/// Heap-backed [`Command`] variant.
+///
+/// `Command<'a>` borrows its `Send` payload, which makes it unsendable
+/// across the channel into the driver task. `OwnedCommand` owns the
+/// payload so jobs can be queued.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum OwnedCommand {
+    /// See [`Command::Ping`].
     Ping,
+    /// See [`Command::GetAddress`].
     GetAddress,
+    /// See [`Command::SetAddress`].
     SetAddress(u16),
+    /// See [`Command::GetNetworkId`].
     GetNetworkId,
+    /// See [`Command::SetNetworkId`].
     SetNetworkId(u8),
+    /// See [`Command::GetBand`].
     GetBand,
+    /// See [`Command::SetBand`].
     SetBand(u32),
+    /// See [`Command::GetParameters`].
     GetParameters,
+    /// See [`Command::SetParameters`].
     SetParameters(RfParams),
+    /// See [`Command::GetCrfop`].
     GetCrfop,
+    /// See [`Command::GetUid`].
     GetUid,
+    /// See [`Command::GetVersion`].
     GetVersion,
+    /// See [`Command::FactoryReset`].
     FactoryReset,
-    Send { to: u16, data: Vec<u8> },
+    /// See [`Command::Send`]; payload owned as a `Vec<u8>`.
+    Send {
+        /// Destination address.
+        to: u16,
+        /// Payload bytes, owned.
+        data: Vec<u8>,
+    },
 }
 
 impl OwnedCommand {
@@ -117,8 +165,12 @@ impl OwnedCommand {
     }
 }
 
+/// Convenience alias for `Result<T, Error>`.
 pub type Result<T> = std::result::Result<T, Error>;
 
+/// One queued unit of work for the background driver task: a command,
+/// the reply channel to send its [`OwnedResponse`] back on, and the
+/// per-call timeout.
 pub struct Job {
     cmd: OwnedCommand,
     reply: oneshot::Sender<Result<OwnedResponse>>,
@@ -126,6 +178,9 @@ pub struct Job {
 }
 
 impl Job {
+    /// Build a new job. Mainly useful if you're driving the
+    /// `Job`-channel side yourself; ordinary use goes through
+    /// [`AsyncRadio`]'s methods.
     pub fn new(
         cmd: OwnedCommand,
         reply: oneshot::Sender<Result<OwnedResponse>>,
@@ -139,17 +194,37 @@ impl Job {
     }
 }
 
+/// Async handle to a RYLR998 driven by a background Tokio task.
+///
+/// The actual `rylr998_core::Driver` and the serial port live in a
+/// `tokio::spawn`ed task; `AsyncRadio` is a thin handle that sends
+/// commands over an `mpsc` and awaits their replies on `oneshot`s.
+/// Unsolicited events flow on a separate channel — pull them with
+/// [`next_event`](Self::next_event).
+///
+/// Methods take `&mut self` because the command channel is single-
+/// consumer; serialize sends through one `AsyncRadio` per radio.
 pub struct AsyncRadio {
     cmd_tx: mpsc::Sender<Job>,
     event_rx: mpsc::Receiver<OwnedEvent>,
 }
 
 impl AsyncRadio {
+    /// Open the radio on a specific serial-port path.
+    ///
+    /// Configures the port at [`rylr998_core::BAUD`] and spawns the
+    /// background driver task.
     pub async fn open(path: &Path) -> Result<Self> {
         let port = tokio_serial::new(path.to_string_lossy(), BAUD).open_native_async()?;
         Ok(Self::from_port(port))
     }
 
+    /// Construct an `AsyncRadio` from an already-open async port.
+    ///
+    /// Useful for tests with `tokio::io::duplex` and for embedding the
+    /// driver in code that owns its own transport. Spawns the
+    /// background driver task; the returned handle owns one end of the
+    /// command and event channels.
     pub fn from_port<S>(port: S) -> Self
     where
         S: AsyncRead + AsyncWrite + Send + Unpin + 'static,
@@ -173,6 +248,7 @@ impl AsyncRadio {
         }
     }
 
+    /// Send `AT` and await `+OK`. Useful as a liveness check.
     pub async fn ping(&mut self) -> Result<()> {
         match self.request(OwnedCommand::Ping, DEFAULT_TIMEOUT).await? {
             OwnedResponse::Ok => Ok(()),
@@ -181,6 +257,7 @@ impl AsyncRadio {
         }
     }
 
+    /// Set this node's address (`AT+ADDRESS=<n>`).
     pub async fn set_address(&mut self, n: u16) -> Result<()> {
         match self
             .request(OwnedCommand::SetAddress(n), DEFAULT_TIMEOUT)
@@ -192,6 +269,7 @@ impl AsyncRadio {
         }
     }
 
+    /// Query this node's address (`AT+ADDRESS?`).
     pub async fn address(&mut self) -> Result<u16> {
         match self
             .request(OwnedCommand::GetAddress, DEFAULT_TIMEOUT)
@@ -203,6 +281,8 @@ impl AsyncRadio {
         }
     }
 
+    /// Set the network ID (`AT+NETWORKID=<n>`). Peers must share an ID
+    /// to communicate.
     pub async fn set_network_id(&mut self, n: u8) -> Result<()> {
         match self
             .request(OwnedCommand::SetNetworkId(n), DEFAULT_TIMEOUT)
@@ -214,6 +294,7 @@ impl AsyncRadio {
         }
     }
 
+    /// Query the network ID (`AT+NETWORKID?`).
     pub async fn network_id(&mut self) -> Result<u8> {
         match self
             .request(OwnedCommand::GetNetworkId, DEFAULT_TIMEOUT)
@@ -225,6 +306,7 @@ impl AsyncRadio {
         }
     }
 
+    /// Set the carrier frequency in Hz (`AT+BAND=<hz>`).
     pub async fn set_band(&mut self, hz: u32) -> Result<()> {
         match self
             .request(OwnedCommand::SetBand(hz), DEFAULT_TIMEOUT)
@@ -236,6 +318,7 @@ impl AsyncRadio {
         }
     }
 
+    /// Query the carrier frequency in Hz (`AT+BAND?`).
     pub async fn band(&mut self) -> Result<u32> {
         match self.request(OwnedCommand::GetBand, DEFAULT_TIMEOUT).await? {
             OwnedResponse::Band(n) => Ok(n),
@@ -244,6 +327,7 @@ impl AsyncRadio {
         }
     }
 
+    /// Set LoRa PHY parameters (`AT+PARAMETER=<sf>,<bw>,<cr>,<preamble>`).
     pub async fn set_parameters(&mut self, p: RfParams) -> Result<()> {
         match self
             .request(OwnedCommand::SetParameters(p), DEFAULT_TIMEOUT)
@@ -255,6 +339,7 @@ impl AsyncRadio {
         }
     }
 
+    /// Query the LoRa PHY parameters (`AT+PARAMETER?`).
     pub async fn parameters(&mut self) -> Result<RfParams> {
         match self
             .request(OwnedCommand::GetParameters, DEFAULT_TIMEOUT)
@@ -266,6 +351,7 @@ impl AsyncRadio {
         }
     }
 
+    /// Query the configured RF output power (`AT+CRFOP?`).
     pub async fn crfop(&mut self) -> Result<u8> {
         match self
             .request(OwnedCommand::GetCrfop, DEFAULT_TIMEOUT)
@@ -277,6 +363,7 @@ impl AsyncRadio {
         }
     }
 
+    /// Query the module's unique ID (`AT+UID?`).
     pub async fn uid(&mut self) -> Result<String> {
         match self.request(OwnedCommand::GetUid, DEFAULT_TIMEOUT).await? {
             OwnedResponse::Uid(s) => Ok(s),
@@ -285,6 +372,7 @@ impl AsyncRadio {
         }
     }
 
+    /// Query the firmware version string (`AT+VER?`).
     pub async fn version(&mut self) -> Result<String> {
         match self
             .request(OwnedCommand::GetVersion, DEFAULT_TIMEOUT)
@@ -296,6 +384,9 @@ impl AsyncRadio {
         }
     }
 
+    /// Send `AT+RESET` and await the module's `+READY` reboot signal.
+    ///
+    /// Uses an extended (2 s) timeout for the post-reset settling time.
     pub async fn factory_reset(&mut self) -> Result<()> {
         match self
             .request(OwnedCommand::FactoryReset, FACTORY_RESET_TIMEOUT)
@@ -307,6 +398,8 @@ impl AsyncRadio {
         }
     }
 
+    /// Transmit `data` to the node at address `to`
+    /// (`AT+SEND=<to>,<len>,<data>`). Use `to = 0` to broadcast.
     pub async fn send(&mut self, to: u16, data: &[u8]) -> Result<()> {
         match self
             .request(
@@ -324,6 +417,16 @@ impl AsyncRadio {
         }
     }
 
+    /// Wait up to `timeout` for the next unsolicited event from the
+    /// radio.
+    ///
+    /// Events received while another command is in flight are queued
+    /// by the background task and surfaced here in arrival order.
+    ///
+    /// # Errors
+    ///
+    /// - [`Error::Timeout`] if no event arrives before the deadline.
+    /// - [`Error::Closed`] if the background task has exited.
     pub async fn next_event(&mut self, timeout: Duration) -> Result<OwnedEvent> {
         tokio::time::timeout(timeout, self.event_rx.recv())
             .await

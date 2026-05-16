@@ -19,6 +19,16 @@ pub(crate) fn filter(names: impl IntoIterator<Item = String>) -> Vec<PathBuf> {
         .collect()
 }
 
+/// Auto-discover a single `cu.usbserial*` serial port.
+///
+/// Equivalent to [`Radio::discover`](crate::Radio::discover); exposed as
+/// a free function for callers that don't have (or want) a [`Radio`](crate::Radio)
+/// yet.
+///
+/// # Errors
+///
+/// - [`Error::NoDevice`](crate::Error::NoDevice) if nothing matches.
+/// - [`Error::Ambiguous`](crate::Error::Ambiguous) if multiple ports match.
 pub fn discover() -> Result<PathBuf> {
     let names = serialport::available_ports()?
         .into_iter()

@@ -7,12 +7,15 @@ authors.workspace       = true
 license.workspace       = true
 repository.workspace    = true
 homepage.workspace      = true
-documentation.workspace = true
 readme                  = "README.md"
 keywords                = ["lora", "rylr998", "reyax", "embedded", "embassy"]
 categories              = ["embedded", "no-std", "asynchronous", "hardware-support"]
 rust-version.workspace  = true
 build                   = "build.rs"
+
+[package.metadata.docs.rs]
+default-target = "thumbv8m.main-none-eabihf"
+targets        = []
 
 [lib]
 test = false

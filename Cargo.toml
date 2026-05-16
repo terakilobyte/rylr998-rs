@@ -9,21 +9,20 @@ members = [
 ]
 
 [workspace.package]
-version       = "0.1.0"
+version       = "0.1.1"
 edition       = "2024"
 authors       = ["Nathan Leniz <nathan.leniz@gmail.com>"]
 license       = "MIT OR Apache-2.0"
 repository    = "https://github.com/terakilobyte/rylr998-rs"
 homepage      = "https://github.com/terakilobyte/rylr998-rs"
-documentation = "https://docs.rs/rylr998-core"
 readme        = "README.md"
 keywords      = ["lora", "rylr998", "reyax", "embedded", "radio"]
 categories    = ["embedded", "no-std", "hardware-support"]
 rust-version  = "1.85"
 
 [workspace.dependencies]
-rylr998-core = { path = "rylr-core", version = "0.1.0" }
-rylr998-std  = { path = "rylr-std",  version = "0.1.0" }
+rylr998-core = { path = "rylr-core", version = "0.1.1" }
+rylr998-std  = { path = "rylr-std",  version = "0.1.1" }
 
 heapless    = "0.8"
 serialport  = "4.9"

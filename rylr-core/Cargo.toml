@@ -7,7 +7,6 @@ authors.workspace       = true
 license.workspace       = true
 repository.workspace    = true
 homepage.workspace      = true
-documentation.workspace = true
 readme                  = "README.md"
 keywords.workspace      = true
 categories.workspace    = true
@@ -25,3 +24,7 @@ defmt   = ["dep:defmt"]
 [dependencies]
 heapless = { workspace = true }
 defmt    = { workspace = true, optional = true }
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
