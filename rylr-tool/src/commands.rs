@@ -1,4 +1,4 @@
-use rylr_std::{OwnedEvent, Radio, Result, RfParams};
+use rylr998_std::{OwnedEvent, Radio, Result, RfParams};
 use std::io::Read;
 use std::time::Duration;
 
@@ -10,7 +10,10 @@ pub fn info(mut r: R) -> Result<()> {
     println!("network_id  {:?}", r.network_id()?);
     println!("band        {:?}", r.band()?);
     let p = r.parameters()?;
-    println!("parameters  sf={} bw={} cr={} preamble={}", p.sf, p.bw, p.cr, p.preamble);
+    println!(
+        "parameters  sf={} bw={} cr={} preamble={}",
+        p.sf, p.bw, p.cr, p.preamble
+    );
     println!("crfop       {:?}", r.crfop()?);
     println!("uid         {}", r.uid()?);
     println!("version     {}", r.version()?);
@@ -48,7 +51,8 @@ pub fn provision(
         "provisioned address={} net={} band={} params={}",
         address,
         net,
-        band.map(|b| b.to_string()).unwrap_or_else(|| "(unchanged)".into()),
+        band.map(|b| b.to_string())
+            .unwrap_or_else(|| "(unchanged)".into()),
         match params {
             Some(p) => format!("{},{},{},{}", p.sf, p.bw, p.cr, p.preamble),
             None => "(unchanged)".into(),
@@ -78,16 +82,21 @@ pub fn listen(mut r: R) -> Result<()> {
     let stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
     let s2 = stop.clone();
     ctrlc::set_handler(move || s2.store(true, std::sync::atomic::Ordering::SeqCst))
-        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+        .map_err(std::io::Error::other)?;
 
     while !stop.load(std::sync::atomic::Ordering::SeqCst) {
         match r.next_event(Duration::from_secs(1)) {
-            Ok(OwnedEvent::Recv { from, data, rssi, snr }) => {
+            Ok(OwnedEvent::Recv {
+                from,
+                data,
+                rssi,
+                snr,
+            }) => {
                 let s = String::from_utf8_lossy(&data);
                 println!("from={from} rssi={rssi} snr={snr} \"{s}\"");
             }
             Ok(OwnedEvent::Ready) => eprintln!("(radio rebooted)"),
-            Err(rylr_std::Error::Timeout) => continue,
+            Err(rylr998_std::Error::Timeout) => continue,
             Err(e) => return Err(e),
         }
     }
@@ -101,9 +110,8 @@ fn marker(r: Result<()>) -> &'static str {
     }
 }
 
-fn verify_failed(field: &str) -> rylr_std::Error {
-    rylr_std::Error::Io(std::io::Error::new(
-        std::io::ErrorKind::Other,
-        format!("provisioning verify failed: {field}"),
-    ))
+fn verify_failed(field: &str) -> rylr998_std::Error {
+    rylr998_std::Error::Io(std::io::Error::other(format!(
+        "provisioning verify failed: {field}"
+    )))
 }

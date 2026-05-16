@@ -3,7 +3,7 @@
 //! directly with their own port type.
 
 use crate::{Error, Result};
-use rylr_core::{Driver, OwnedEvent};
+use rylr998_core::{Driver, OwnedEvent};
 use std::collections::VecDeque;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
@@ -11,9 +11,6 @@ use std::time::Duration;
 
 pub struct Radio<P: Read + Write = Box<dyn serialport::SerialPort>> {
     pub(crate) driver: Driver,
-    /// `port` is read once `pump_until` (the user's exercise) is implemented;
-    /// drop the allow then.
-    #[allow(dead_code)]
     pub(crate) port: P,
     pub(crate) events: VecDeque<OwnedEvent>,
 }
@@ -40,58 +37,62 @@ impl Radio<Box<dyn serialport::SerialPort>> {
 impl<P: Read + Write> Radio<P> {
     /// Test- and integration-friendly constructor: bring your own port.
     pub fn from_port(port: P) -> Self {
-        Self { driver: Driver::new(), port, events: VecDeque::new() }
+        Self {
+            driver: Driver::new(),
+            port,
+            events: VecDeque::new(),
+        }
     }
 }
 
-// `Poll` is unused until `pump_until` (user exercise) is implemented;
-// drop this allow then.
-#[allow(unused_imports)]
-use rylr_core::{Poll, Response};
+use rylr998_core::{Poll, Response};
 use std::time::Instant;
 
 impl<P: Read + Write> Radio<P> {
     /// Drive the state machine and the underlying port until the supplied
     /// predicate returns `Some`, or `deadline` is reached.
-    ///
-    /// ## EXERCISE (rylr-std)
-    ///
-    /// Implement the body. Per iteration:
-    ///
-    /// 1. While `self.driver.poll()` returns `Poll::NeedTx(bytes)`:
-    ///       write all `bytes` to `self.port`, then `self.driver.ack_tx(n)`.
-    ///       Propagate I/O errors as `Error::Io`.
-    /// 2. Drain the driver:
-    ///    Loop calling `self.driver.poll()`:
-    ///      - `Poll::Event(e)`  -> push `e.into_owned()` to `self.events`,
-    ///                             continue.
-    ///      - `Poll::Response(r)` -> hand to `want`. If `Some(out)`, return
-    ///                             `out`. If `None`, continue.
-    ///      - `Poll::NeedTx(_)` -> handle as in step 1.
-    ///      - `Poll::Idle`      -> break out of the inner loop.
-    /// 3. Read up to 256 bytes from `self.port` into a stack buffer with
-    ///    a 50 ms read timeout (already configured on the port). Wrap
-    ///    `WouldBlock` / `TimedOut` as "no bytes this round" — not an
-    ///    error. Feed accepted bytes via `self.driver.push_rx`.
-    /// 4. Check `Instant::now() >= deadline`. If so, return `Err(Timeout)`.
-    pub(crate) fn pump_until<R, F>(
-        &mut self,
-        deadline: Instant,
-        mut want: F,
-    ) -> Result<R>
+    pub(crate) fn pump_until<R, F>(&mut self, deadline: Instant, mut want: F) -> Result<R>
     where
         F: FnMut(Response<'_>) -> Option<Result<R>>,
     {
-        // TODO: implement per the rules above.
-        let _ = (deadline, &mut want);
-        unimplemented!("Radio::pump_until — exercise")
+        loop {
+            loop {
+                match self.driver.poll() {
+                    Poll::NeedTx(bytes) => {
+                        let n = bytes.len();
+                        self.port.write_all(bytes).map_err(Error::Io)?;
+                        self.driver.ack_tx(n);
+                    }
+                    Poll::Response(r) => {
+                        if let Some(out) = want(r) {
+                            return out;
+                        }
+                    }
+                    Poll::Event(e) => self.events.push_back(e.into_owned()),
+                    Poll::Idle => break,
+                }
+            }
+            let mut buf = [0u8; 256];
+            match self.port.read(&mut buf[..]) {
+                Ok(n) => {
+                    self.driver.push_rx(&buf[..n])?;
+                }
+                Err(e) => match e.kind() {
+                    std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut => {}
+                    _ => return Err(Error::Io(e)),
+                },
+            }
+            if Instant::now() >= deadline {
+                return Err(Error::Timeout);
+            }
+        }
     }
 }
 
-use rylr_core::Command;
+use rylr998_core::Command;
 
 const DEFAULT_TIMEOUT: Duration = Duration::from_secs(1);
-const FACTORY_RESET_TIMEOUT: Duration = Duration::from_secs(2);
+const FACTORY_RESET_TIMEOUT: Duration = Duration::from_secs(4);
 
 impl<P: Read + Write> Radio<P> {
     fn deadline(d: Duration) -> Instant {
@@ -101,6 +102,11 @@ impl<P: Read + Write> Radio<P> {
     pub fn ping(&mut self) -> Result<()> {
         self.driver.submit(Command::Ping)?;
         self.pump_until(Self::deadline(DEFAULT_TIMEOUT), wait_ok)
+    }
+
+    pub fn factory_reset(&mut self) -> Result<()> {
+        self.driver.submit(Command::FactoryReset)?;
+        self.pump_until(Self::deadline(FACTORY_RESET_TIMEOUT), wait_ok)
     }
 
     pub fn set_address(&mut self, n: u16) -> Result<()> {
@@ -145,12 +151,12 @@ impl<P: Read + Write> Radio<P> {
         })
     }
 
-    pub fn set_parameters(&mut self, p: rylr_core::RfParams) -> Result<()> {
+    pub fn set_parameters(&mut self, p: rylr998_core::RfParams) -> Result<()> {
         self.driver.submit(Command::SetParameters(p))?;
         self.pump_until(Self::deadline(DEFAULT_TIMEOUT), wait_ok)
     }
 
-    pub fn parameters(&mut self) -> Result<rylr_core::RfParams> {
+    pub fn parameters(&mut self) -> Result<rylr998_core::RfParams> {
         self.driver.submit(Command::GetParameters)?;
         self.pump_until(Self::deadline(DEFAULT_TIMEOUT), |r| match r {
             Response::Parameters(p) => Some(Ok(p)),
@@ -184,11 +190,6 @@ impl<P: Read + Write> Radio<P> {
             Response::Err(n) => Some(Err(Error::Radio(n))),
             _ => None,
         })
-    }
-
-    pub fn factory_reset(&mut self) -> Result<()> {
-        self.driver.submit(Command::FactoryReset)?;
-        self.pump_until(Self::deadline(FACTORY_RESET_TIMEOUT), wait_ok)
     }
 
     pub fn send(&mut self, to: u16, data: &[u8]) -> Result<()> {

@@ -1,7 +1,8 @@
 [build]
-target = "thumbv6m-none-eabi"
+target = "thumbv8m.main-none-eabihf"
 
-[target.thumbv6m-none-eabi]
+[target.thumbv8m.main-none-eabihf]
+runner = "probe-rs run --chip RP235x"
 rustflags = [
     "-C", "link-arg=--nmagic",
     "-C", "link-arg=-Tlink.x",

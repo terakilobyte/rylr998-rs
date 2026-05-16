@@ -1516,7 +1516,19 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b39cdef0fa800fc44525c84ccb54a029961a8215f9619753635a9c0d2538d46d"
 
 [[package]]
-name = "rylr-core"
+name = "rylr998"
+version = "0.1.0"
+dependencies = [
+ "assert_cmd",
+ "clap",
+ "ctrlc",
+ "predicates",
+ "rylr998-std",
+ "serialport",
+]
+
+[[package]]
+name = "rylr998-core"
 version = "0.1.0"
 dependencies = [
  "defmt",
@@ -1524,7 +1536,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "rylr-embassy"
+name = "rylr998-embassy"
 version = "0.1.0"
 dependencies = [
  "cortex-m",
@@ -1535,39 +1547,28 @@ dependencies = [
  "embassy-rp",
  "embassy-time",
  "embedded-io-async",
+ "heapless 0.8.0",
  "panic-probe",
- "rylr-core",
+ "rylr998-core",
 ]
 
 [[package]]
-name = "rylr-std"
+name = "rylr998-std"
 version = "0.1.0"
 dependencies = [
- "rylr-core",
+ "rylr998-core",
  "serialport",
  "thiserror",
 ]
 
 [[package]]
-name = "rylr-tokio"
+name = "rylr998-tokio"
 version = "0.1.0"
 dependencies = [
- "rylr-core",
+ "rylr998-core",
  "thiserror",
  "tokio",
  "tokio-serial",
-]
-
-[[package]]
-name = "rylr-tool"
-version = "0.1.0"
-dependencies = [
- "assert_cmd",
- "clap",
- "ctrlc",
- "predicates",
- "rylr-std",
- "serialport",
 ]
 
 [[package]]

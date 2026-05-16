@@ -1,13 +1,26 @@
 [package]
-name = "rylr-core"
-version.workspace = true
-edition.workspace = true
+name        = "rylr998-core"
+description = "Hardware-agnostic protocol driver for the REYAX RYLR998 LoRa radio module."
+version.workspace       = true
+edition.workspace       = true
+authors.workspace       = true
+license.workspace       = true
+repository.workspace    = true
+homepage.workspace      = true
+documentation.workspace = true
+readme                  = "README.md"
+keywords.workspace      = true
+categories.workspace    = true
+rust-version.workspace  = true
 
 [features]
 default = []
-alloc = []
-std = []
-defmt = ["dep:defmt"]
+# Enables types and helpers that require `alloc` (e.g. `OwnedEvent`).
+alloc   = []
+# Enables `std`-only conveniences. Implies `alloc`.
+std     = []
+# Implements `defmt::Format` on public error / event / response types.
+defmt   = ["dep:defmt"]
 
 [dependencies]
 heapless = { workspace = true }

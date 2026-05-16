@@ -3,7 +3,7 @@ use std::path::PathBuf;
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
     #[error("core: {0}")]
-    Core(#[from] rylr_core::Error),
+    Core(#[from] rylr998_core::Error),
     #[error("io: {0}")]
     Io(#[from] std::io::Error),
     #[error("serial: {0}")]

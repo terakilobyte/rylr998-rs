@@ -43,7 +43,12 @@ pub enum Response<'a> {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Event<'a> {
-    Recv { from: u16, data: &'a [u8], rssi: i16, snr: i16 },
+    Recv {
+        from: u16,
+        data: &'a [u8],
+        rssi: i16,
+        snr: i16,
+    },
     Ready,
 }
 
@@ -99,7 +104,12 @@ mod owned {
 
     #[derive(Clone, Debug, PartialEq, Eq)]
     pub enum OwnedEvent {
-        Recv { from: u16, data: Vec<u8>, rssi: i16, snr: i16 },
+        Recv {
+            from: u16,
+            data: Vec<u8>,
+            rssi: i16,
+            snr: i16,
+        },
         Ready,
     }
 
@@ -107,7 +117,12 @@ mod owned {
         #[must_use]
         pub fn into_owned(self) -> OwnedEvent {
             match self {
-                Event::Recv { from, data, rssi, snr } => OwnedEvent::Recv {
+                Event::Recv {
+                    from,
+                    data,
+                    rssi,
+                    snr,
+                } => OwnedEvent::Recv {
                     from,
                     data: data.to_vec(),
                     rssi,
@@ -127,10 +142,20 @@ mod owned_tests {
     #[test]
     fn recv_into_owned_copies_data() {
         let bytes = [0xDE, 0xAD, 0xBE, 0xEF];
-        let ev = Event::Recv { from: 5, data: &bytes, rssi: -42, snr: 8 };
+        let ev = Event::Recv {
+            from: 5,
+            data: &bytes,
+            rssi: -42,
+            snr: 8,
+        };
         let owned = ev.into_owned();
         match owned {
-            OwnedEvent::Recv { from, data, rssi, snr } => {
+            OwnedEvent::Recv {
+                from,
+                data,
+                rssi,
+                snr,
+            } => {
                 assert_eq!(from, 5);
                 assert_eq!(data, vec![0xDE, 0xAD, 0xBE, 0xEF]);
                 assert_eq!(rssi, -42);

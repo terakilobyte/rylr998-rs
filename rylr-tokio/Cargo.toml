@@ -1,10 +1,20 @@
 [package]
-name = "rylr-tokio"
-version.workspace = true
-edition.workspace = true
+name        = "rylr998-tokio"
+description = "Async (Tokio) host-side driver for the REYAX RYLR998 LoRa radio module."
+version.workspace       = true
+edition.workspace       = true
+authors.workspace       = true
+license.workspace       = true
+repository.workspace    = true
+homepage.workspace      = true
+documentation.workspace = true
+readme                  = "README.md"
+keywords.workspace      = true
+categories.workspace    = true
+rust-version.workspace  = true
 
 [dependencies]
-rylr-core    = { workspace = true, features = ["alloc", "std"] }
+rylr998-core = { workspace = true, features = ["alloc", "std"] }
 tokio        = { workspace = true, features = ["rt", "io-util", "sync", "macros", "time"] }
 tokio-serial = { workspace = true }
 thiserror    = { workspace = true }

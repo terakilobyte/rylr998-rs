@@ -1,13 +1,27 @@
 [package]
-name = "rylr-tool"
-version.workspace = true
-edition.workspace = true
+name        = "rylr998"
+description = "Command-line tool to configure and exercise REYAX RYLR998 LoRa radio modules."
+version.workspace       = true
+edition.workspace       = true
+authors.workspace       = true
+license.workspace       = true
+repository.workspace    = true
+homepage.workspace      = true
+documentation.workspace = true
+readme                  = "README.md"
+keywords                = ["lora", "rylr998", "reyax", "cli", "radio"]
+categories              = ["command-line-utilities", "hardware-support"]
+rust-version.workspace  = true
+
+[[bin]]
+name = "rylr998"
+path = "src/main.rs"
 
 [dependencies]
-rylr-std   = { workspace = true }
-clap       = { workspace = true }
-ctrlc      = { workspace = true }
-serialport = { workspace = true }
+rylr998-std = { workspace = true }
+clap        = { workspace = true }
+ctrlc       = { workspace = true }
+serialport  = { workspace = true }
 
 [dev-dependencies]
 assert_cmd = "2"

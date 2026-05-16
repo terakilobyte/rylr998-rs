@@ -1,8 +1,18 @@
 [package]
-name = "rylr-embassy"
-version.workspace = true
-edition.workspace = true
-build = "build.rs"
+name        = "rylr998-embassy"
+description = "Embassy-based no_std driver for the REYAX RYLR998 LoRa radio module (RP2040 / RP2350 / any embedded-io-async UART)."
+version.workspace       = true
+edition.workspace       = true
+authors.workspace       = true
+license.workspace       = true
+repository.workspace    = true
+homepage.workspace      = true
+documentation.workspace = true
+readme                  = "README.md"
+keywords                = ["lora", "rylr998", "reyax", "embedded", "embassy"]
+categories              = ["embedded", "no-std", "asynchronous", "hardware-support"]
+rust-version.workspace  = true
+build                   = "build.rs"
 
 [lib]
 test = false
@@ -12,7 +22,7 @@ name = "pico_smoke"
 test = false
 
 [dependencies]
-rylr-core         = { workspace = true, features = ["defmt"] }
+rylr998-core      = { workspace = true, features = ["defmt"] }
 embedded-io-async = { workspace = true }
 embassy-rp        = { workspace = true }
 embassy-time      = { workspace = true }
@@ -22,3 +32,4 @@ defmt-rtt         = { workspace = true }
 panic-probe       = { workspace = true }
 cortex-m          = { workspace = true }
 cortex-m-rt       = { workspace = true }
+heapless          = { workspace = true }

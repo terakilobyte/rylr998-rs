@@ -4,7 +4,11 @@ use std::path::PathBuf;
 mod commands;
 
 #[derive(Parser)]
-#[command(name = "rylr-tool", about = "Configure and exercise REYAX RYLR998 modules.")]
+#[command(
+    name = "rylr998",
+    about = "Configure and drive REYAX RYLR998 LoRa radio modules from the command line.",
+    version,
+)]
 struct Cli {
     /// Override auto-discovery of /dev/cu.usbserial*.
     #[arg(long, hide = true, global = true)]
@@ -28,7 +32,7 @@ enum Cmd {
         band: Option<u32>,
         /// "S,B,C,P" -- four small ints
         #[arg(long, value_parser = parse_params)]
-        params: Option<rylr_std::RfParams>,
+        params: Option<rylr998_std::RfParams>,
     },
     /// AT+FACTORY then wait for +READY.
     Reset,
@@ -42,13 +46,13 @@ enum Cmd {
     Listen,
 }
 
-fn parse_params(s: &str) -> Result<rylr_std::RfParams, String> {
+fn parse_params(s: &str) -> Result<rylr998_std::RfParams, String> {
     let parts: Vec<&str> = s.split(',').collect();
     if parts.len() != 4 {
         return Err(format!("expected S,B,C,P (4 ints), got {} parts", parts.len()));
     }
     let n = |s: &str| s.parse::<u8>().map_err(|e| e.to_string());
-    Ok(rylr_std::RfParams {
+    Ok(rylr998_std::RfParams {
         sf: n(parts[0])?,
         bw: n(parts[1])?,
         cr: n(parts[2])?,
@@ -58,13 +62,13 @@ fn parse_params(s: &str) -> Result<rylr_std::RfParams, String> {
 
 fn main() {
     let cli = Cli::parse();
-    let result = (|| -> rylr_std::Result<()> {
+    let result = (|| -> rylr998_std::Result<()> {
         let radio = match cli.port {
-            Some(p) => rylr_std::Radio::open(&p),
+            Some(p) => rylr998_std::Radio::open(&p),
             None => {
-                let path = rylr_std::Radio::discover()?;
+                let path = rylr998_std::Radio::discover()?;
                 eprintln!("using port: {}", path.display());
-                rylr_std::Radio::open(&path)
+                rylr998_std::Radio::open(&path)
             }
         }?;
         match cli.cmd {

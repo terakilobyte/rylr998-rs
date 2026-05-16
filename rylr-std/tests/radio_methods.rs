@@ -1,7 +1,7 @@
 mod common;
 
 use common::{pair, Endpoint, RadioSide, WireSide};
-use rylr_std::Radio;
+use rylr998_std::Radio;
 
 fn make() -> (Radio<Endpoint>, WireSide) {
     let (RadioSide(ep), wire) = pair();
@@ -50,7 +50,7 @@ fn err_response_propagates() {
     let _ = wire.drain_outgoing();
     wire.say(b"+ERR=4\r\n");
     let r = handle.join().unwrap();
-    assert!(matches!(r, Err(rylr_std::Error::Radio(4))));
+    assert!(matches!(r, Err(rylr998_std::Error::Radio(4))));
 }
 
 #[test]
@@ -59,7 +59,7 @@ fn next_event_returns_recv() {
     wire.say(b"+RCV=2,5,hello,-42,8\r\n");
     let ev = radio.next_event(std::time::Duration::from_secs(1)).unwrap();
     match ev {
-        rylr_std::OwnedEvent::Recv { from, data, rssi, snr } => {
+        rylr998_std::OwnedEvent::Recv { from, data, rssi, snr } => {
             assert_eq!(from, 2);
             assert_eq!(data, b"hello");
             assert_eq!(rssi, -42);

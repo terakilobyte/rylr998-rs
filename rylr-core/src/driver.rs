@@ -6,10 +6,6 @@ use heapless::Vec as HVec;
 pub(crate) const RX_BUF: usize = 512;
 pub(crate) const TX_BUF: usize = 512;
 
-// `State::Awaiting.kind` and `AwaitKind::Query.0` aren't read yet — they're
-// consumed by the `poll()` body that lives as the user's exercise (Task 7).
-// Once `poll` reads them, drop these allows.
-#[allow(dead_code)]
 #[derive(Default, Clone, Copy)]
 pub(crate) enum State {
     #[default]
@@ -21,7 +17,6 @@ pub(crate) enum State {
     Awaiting { kind: AwaitKind },
 }
 
-#[allow(dead_code)]
 #[derive(Clone, Copy)]
 pub(crate) enum AwaitKind {
     /// Setter / Ping / FactoryReset — expects `+OK` or `+ERR`.
@@ -32,7 +27,13 @@ pub(crate) enum AwaitKind {
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(crate) enum QueryKey {
-    Address, NetworkId, Band, Parameters, Crfop, Uid, Version,
+    Address,
+    NetworkId,
+    Band,
+    Parameters,
+    Crfop,
+    Uid,
+    Version,
 }
 
 pub struct Driver {
@@ -46,14 +47,27 @@ pub struct Driver {
     pub(crate) awaiting_ready_as_ok: bool,
     pub(crate) pending_kind: Option<AwaitKind>,
     /// Scratch space for poll() to copy a line into before draining rx.
-    #[allow(dead_code)]
     pub(crate) line_buf: [u8; 288],
-    #[allow(dead_code)]
     pub(crate) line_buf_len: usize,
 }
 
+impl Default for Driver {
+    fn default() -> Self {
+        Self {
+            rx: HVec::new(),
+            tx: HVec::new(),
+            tx_in_flight: 0,
+            state: State::Idle,
+            awaiting_ready_as_ok: false,
+            pending_kind: None,
+            line_buf: [0u8; 288],
+            line_buf_len: 0,
+        }
+    }
+}
+
 impl Driver {
-    pub const fn new() -> Self {
+    pub fn new() -> Self {
         Self {
             rx: HVec::new(),
             tx: HVec::new(),
@@ -71,14 +85,14 @@ impl Driver {
             return Err(Error::Busy);
         }
         let kind = match cmd {
-            Command::GetAddress    => AwaitKind::Query(QueryKey::Address),
-            Command::GetNetworkId  => AwaitKind::Query(QueryKey::NetworkId),
-            Command::GetBand       => AwaitKind::Query(QueryKey::Band),
+            Command::GetAddress => AwaitKind::Query(QueryKey::Address),
+            Command::GetNetworkId => AwaitKind::Query(QueryKey::NetworkId),
+            Command::GetBand => AwaitKind::Query(QueryKey::Band),
             Command::GetParameters => AwaitKind::Query(QueryKey::Parameters),
-            Command::GetCrfop      => AwaitKind::Query(QueryKey::Crfop),
-            Command::GetUid        => AwaitKind::Query(QueryKey::Uid),
-            Command::GetVersion    => AwaitKind::Query(QueryKey::Version),
-            _                      => AwaitKind::Ack,
+            Command::GetCrfop => AwaitKind::Query(QueryKey::Crfop),
+            Command::GetUid => AwaitKind::Query(QueryKey::Uid),
+            Command::GetVersion => AwaitKind::Query(QueryKey::Version),
+            _ => AwaitKind::Ack,
         };
         self.awaiting_ready_as_ok = matches!(cmd, Command::FactoryReset);
 
@@ -112,61 +126,113 @@ impl Driver {
             self.tx.truncate(len - n);
         }
         self.tx_in_flight -= n;
-        if self.tx.is_empty() && matches!(self.state, State::SendingTx) {
-            if let Some(kind) = self.pending_kind.take() {
-                self.state = State::Awaiting { kind };
-            }
+        if self.tx.is_empty()
+            && matches!(self.state, State::SendingTx)
+            && let Some(kind) = self.pending_kind.take()
+        {
+            self.state = State::Awaiting { kind };
         }
     }
 
-    /// Drive the state machine.
-    ///
-    /// ## EXERCISE
-    ///
-    /// Priority order on each call:
-    /// 1. If we have undelivered TX bytes (`self.tx` has bytes that haven't
-    ///    been handed out as `NeedTx` yet), return `Poll::NeedTx(slice)`.
-    ///    Track them as in-flight via `self.tx_in_flight` so `ack_tx` can
-    ///    drain them.
-    /// 2. Try to find a complete unsolicited event in `self.rx`:
-    ///    a. Look for `\r\n`. If absent, no events available.
-    ///    b. If the line starts with `+RCV` or `+READY`, parse it via
-    ///       `crate::decode::parse_event`. Drain the line + `\r\n` from
-    ///       `self.rx` and return `Poll::Event(...)`.
-    ///    c. If `awaiting_ready_as_ok` is true and the line is `+READY`,
-    ///       return `Poll::Response(Response::Ok)` instead, transition to
-    ///       `Idle`, clear `awaiting_ready_as_ok`, drain the line.
-    /// 3. If we're in state `Awaiting`, look for a complete response line
-    ///    (`+OK`, `+ERR=N`, or the matching `+<KEY>=...`) and parse via
-    ///    `decode::parse_response`. On match, drain, transition to `Idle`,
-    ///    return `Poll::Response(...)`.
-    /// 4. Otherwise, return `Poll::Idle`.
-    ///
-    /// ### Hints
-    ///
-    /// - You'll want a private helper `fn next_line_end(&self) -> Option<usize>`
-    ///   that returns the index of `\r` if a complete `\r\n` is buffered.
-    /// - Use `self.rx.as_slice()[..end]` for the line bytes; then
-    ///   `self.rx.copy_within(end + 2.., 0)` + `self.rx.truncate(...)` to
-    ///   drain. (`heapless::Vec` has no `drain`, so manual copy is the move.)
-    /// - The borrow returned in `Poll::Event` / `Poll::Response` must outlive
-    ///   the drain. Translation: parse first, then drain. Or parse into an
-    ///   intermediate owned representation before draining — but that adds
-    ///   an alloc. Cleanest: take a snapshot of the line into a stack buffer,
-    ///   parse from that, then drain.
-    ///
-    /// ### Note on borrowing
-    ///
-    /// Returning `Poll::Event { data: &[u8] }` from `&mut self` while the
-    /// data lives in `self.rx` requires that we *not* mutate `self.rx`
-    /// between parse and return. The simplest solution: copy the line into
-    /// a small `[u8; 288]` field on `Driver` (`line_buf`), drain `self.rx`
-    /// of that line *before* parsing, then parse from `line_buf`. The borrow
-    /// returned then ties to `&self.line_buf`, which `&mut self` already
-    /// reserves.
+    fn next_line_end(&self) -> Option<usize> {
+        if let Some(r) = self.rx.iter().position(|b| *b == b'\r')
+            && self.rx.get(r + 1).is_some_and(|b| *b == b'\n')
+        {
+            return Some(r);
+        }
+
+        None
+    }
+
+    fn drain_rx_line(&mut self, end: usize) {
+        let len = self.rx.len();
+        self.rx.copy_within(end + 2..len, 0);
+        self.rx.truncate(len - (end + 2));
+    }
+
+    fn response_matches(kind: AwaitKind, line: &[u8]) -> bool {
+        if line.starts_with(b"+ERR=") {
+            return true;
+        }
+
+        match kind {
+            AwaitKind::Ack => line == b"+OK" || line == b"+RESET" || line == b"+READY",
+            AwaitKind::Query(QueryKey::Address) => line.starts_with(b"+ADDRESS="),
+            AwaitKind::Query(QueryKey::NetworkId) => line.starts_with(b"+NETWORKID="),
+            AwaitKind::Query(QueryKey::Band) => line.starts_with(b"+BAND="),
+            AwaitKind::Query(QueryKey::Parameters) => line.starts_with(b"+PARAMETER="),
+            AwaitKind::Query(QueryKey::Crfop) => line.starts_with(b"+CRFOP="),
+            AwaitKind::Query(QueryKey::Uid) => line.starts_with(b"+UID="),
+            AwaitKind::Query(QueryKey::Version) => line.starts_with(b"+VER="),
+        }
+    }
+
     pub fn poll(&mut self) -> Poll<'_> {
-        // TODO: implement per the rules above.
-        unimplemented!("Driver::poll — exercise")
+        if self.tx_in_flight < self.tx.len() {
+            let bytes = &self.tx[self.tx_in_flight..];
+            self.tx_in_flight = self.tx.len();
+            return Poll::NeedTx(bytes);
+        }
+
+        if !self.rx.is_empty()
+            && let Some(end) = self.next_line_end()
+        {
+            // put the line to read in line_buf
+            self.line_buf[..end].copy_from_slice(&self.rx[..end]);
+            self.line_buf_len = end;
+
+            // `AT+RESET` produces "+RESET\r\n" then "+READY\r\n". The +RESET
+            // line is intermediate — silently drain it and re-poll so the
+            // caller's drain loop sees the +READY without us returning Idle
+            // mid-batch (which would force them to wait for more bytes that
+            // are already buffered).
+            if self.awaiting_ready_as_ok && self.line_buf[..end].starts_with(b"+RESET") {
+                self.drain_rx_line(end);
+                return self.poll();
+            }
+
+            let is_event = {
+                let line = &self.line_buf[..end];
+                line.starts_with(b"+RCV") || line.starts_with(b"+READY")
+            };
+
+            if is_event {
+                let ready_as_ok = self.awaiting_ready_as_ok && self.line_buf[..end] == *b"+READY";
+                if ready_as_ok {
+                    self.drain_rx_line(end);
+                    self.awaiting_ready_as_ok = false;
+                    self.state = State::Idle;
+                    return Poll::Response(crate::Response::Ok);
+                }
+                self.drain_rx_line(end);
+                let line = &self.line_buf[..self.line_buf_len];
+                match crate::decode::parse_event(line) {
+                    Ok(e) => {
+                        return Poll::Event(e);
+                    }
+                    Err(_) => return Poll::Idle,
+                }
+            }
+
+            let response_matches = if let State::Awaiting { kind } = self.state {
+                Self::response_matches(kind, &self.line_buf[..end])
+            } else {
+                false
+            };
+
+            if response_matches {
+                self.drain_rx_line(end);
+                self.awaiting_ready_as_ok = false;
+                self.state = State::Idle;
+                let line = &self.line_buf[..self.line_buf_len];
+                match crate::decode::parse_response(line) {
+                    Ok(response) => return Poll::Response(response),
+                    Err(_) => return Poll::Idle,
+                }
+            }
+        }
+
+        Poll::Idle
     }
 }
 
@@ -296,7 +362,12 @@ mod poll_tests {
         let mut d = Driver::new();
         d.push_rx(b"+RCV=2,5,hello,-42,8\r\n").unwrap();
         match d.poll() {
-            Poll::Event(Event::Recv { from: 2, data, rssi: -42, snr: 8 }) => {
+            Poll::Event(Event::Recv {
+                from: 2,
+                data,
+                rssi: -42,
+                snr: 8,
+            }) => {
                 assert_eq!(data, b"hello");
             }
             other => panic!("unexpected: {:?}", other),

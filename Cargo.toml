@@ -9,12 +9,21 @@ members = [
 ]
 
 [workspace.package]
-version = "0.1.0"
-edition = "2024"
+version       = "0.1.0"
+edition       = "2024"
+authors       = ["Nathan Leniz <nathan.leniz@gmail.com>"]
+license       = "MIT OR Apache-2.0"
+repository    = "https://github.com/terakilobyte/rylr998-rs"
+homepage      = "https://github.com/terakilobyte/rylr998-rs"
+documentation = "https://docs.rs/rylr998-core"
+readme        = "README.md"
+keywords      = ["lora", "rylr998", "reyax", "embedded", "radio"]
+categories    = ["embedded", "no-std", "hardware-support"]
+rust-version  = "1.85"
 
 [workspace.dependencies]
-rylr-core = { path = "rylr-core", version = "0.1.0" }
-rylr-std  = { path = "rylr-std",  version = "0.1.0" }
+rylr998-core = { path = "rylr-core", version = "0.1.0" }
+rylr998-std  = { path = "rylr-std",  version = "0.1.0" }
 
 heapless    = "0.8"
 serialport  = "4.9"
@@ -28,7 +37,7 @@ tokio-serial = "5"
 
 embedded-io-async = "0.7"
 embassy-executor  = { version = "0.9", features = ["arch-cortex-m", "executor-thread"] }
-embassy-rp        = { version = "0.10", features = ["rp2040", "time-driver", "critical-section-impl", "defmt", "unstable-pac"] }
+embassy-rp        = { version = "0.10", features = ["rp235xa", "time-driver", "critical-section-impl", "defmt", "unstable-pac"] }
 embassy-time      = { version = "0.5", features = ["defmt", "defmt-timestamp-uptime"] }
 defmt             = "1"
 defmt-rtt         = "1"

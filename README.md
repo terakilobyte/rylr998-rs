@@ -1,60 +1,81 @@
-# rylr
+# rylr998-rs
 
-Rust workspace for working with REYAX RYLR998 LoRa modules.
+A complete Rust stack for the REYAX **RYLR998** LoRa radio module, from a
+hardware-agnostic protocol layer up to a CLI you can drive from your shell.
 
 ## Crates
 
-- `rylr-core` — sans-I/O state machine. `no_std`, no I/O traits, no clocks.
-- `rylr-std` — blocking, USB serial, for Mac and Pi.
-- `rylr-tool` — CLI binary built on `rylr-std`.
-- `rylr-tokio` — async; scaffolded as an exercise.
-- `rylr-embassy` — RP2040 + embassy UART; scaffolded as an exercise.
+| Crate | What it is |
+|---|---|
+| [`rylr998-core`](rylr-core)       | `no_std`, sans-I/O state machine. Encodes `AT+…` commands, parses response and event lines, exposes a `Driver` you feed bytes to and pull events from. |
+| [`rylr998-std`](rylr-std)         | Blocking host driver over `serialport`. The "talk to a USB-connected radio from your laptop" crate. |
+| [`rylr998-tokio`](rylr-tokio)     | Async host driver over `tokio-serial`. A background task owns the protocol; the handle is `Send` + cheap to share. |
+| [`rylr998-embassy`](rylr-embassy) | `no_std` driver over `embedded-io-async`. Works on RP2040 / RP2350 / anything with an async UART (Embassy, etc.). |
+| [`rylr998`](rylr-tool)            | The CLI front-end. `rylr998 info`, `rylr998 send --to N "msg"`, `rylr998 listen`, etc. |
 
-## Status
+All five share `rylr998-core`'s state machine, so the wire-format logic is
+written and tested in exactly one place.
 
-`rylr-tool` is functional once the user finishes the marked exercises:
-
-1. `rylr-core/src/decode.rs` — line parser.
-2. `rylr-core/src/driver.rs` `poll()` — state machine.
-3. `rylr-std/src/radio.rs` `pump_until` — blocking read/write loop.
-
-The `rylr-tokio` and `rylr-embassy` crates are scaffolds with detailed
-TODOs. Implement them when needed.
-
-## Build
+## Quick start
 
 ```sh
-cargo check --workspace --exclude rylr-embassy
-cargo check -p rylr-embassy --target thumbv6m-none-eabi
-cargo test --workspace --exclude rylr-embassy
-cargo build -p rylr-tool --release
+# install the CLI
+cargo install rylr998
+
+# auto-find your USB serial radio and dump its config
+rylr998 info
+
+# provision two radios
+rylr998 --port /dev/cu.usbserial-A1 provision --address 1 --net 18
+rylr998 --port /dev/cu.usbserial-B1 provision --address 2 --net 18
+
+# listen on one terminal:
+rylr998 --port /dev/cu.usbserial-B1 listen
+
+# in another terminal, send to it:
+rylr998 --port /dev/cu.usbserial-A1 send --to 2 "hello world"
 ```
 
-## Manual smoke test (two RYLR998s)
+## Using as a library
 
-You will need two RYLR998 modules attached to two USB-UART adapters,
-plugged into the same machine.
+```rust
+// Blocking (rylr998-std):
+let mut radio = rylr998_std::Radio::open_auto()?;
+radio.set_address(5)?;
+radio.send(2, b"hello")?;
+
+// Async (rylr998-tokio):
+let mut radio = rylr998_tokio::AsyncRadio::open(&path).await?;
+radio.set_address(5).await?;
+radio.send(2, b"hello").await?;
+
+// Embedded (rylr998-embassy, no_std):
+let mut radio = rylr998_embassy::Radio::new(uart);
+radio.set_address(5).await?;
+radio.send(2, b"hello").await?;
+```
+
+## Build matrix
 
 ```sh
-# Identify them:
-ls /dev/cu.usbserial*
+# host crates
+cargo test --workspace --exclude rylr998-embassy
 
-# Provision radio A as address 1, network 18:
-./target/release/rylr-tool --port /dev/cu.usbserial-A1 provision --address 1 --net 18
-
-# Provision radio B as address 2, network 18:
-./target/release/rylr-tool --port /dev/cu.usbserial-B1 provision --address 2 --net 18
-
-# Listen on B:
-./target/release/rylr-tool --port /dev/cu.usbserial-B1 listen &
-
-# Send from A:
-./target/release/rylr-tool --port /dev/cu.usbserial-A1 send --to 2 hello
-# Expected on the listen window:
-# from=1 rssi=<n> snr=<n> "hello"
+# embedded crate (RP2350 by default; switch target for RP2040)
+cd rylr-embassy && cargo check --example pico_smoke
 ```
 
-## Spec & plan
+## License
 
-- Spec: `docs/superpowers/specs/2026-05-03-rylr-workspace-design.md`
-- Plan: `docs/superpowers/plans/2026-05-03-rylr-workspace.md`
+Licensed under either of:
+
+- MIT license ([LICENSE-MIT](LICENSE-MIT) or <http://opensource.org/licenses/MIT>)
+- Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE) or <http://www.apache.org/licenses/LICENSE-2.0>)
+
+at your option.
+
+### Contribution
+
+Unless you explicitly state otherwise, any contribution intentionally
+submitted for inclusion in this project by you shall be dual-licensed as
+above, without any additional terms or conditions.
