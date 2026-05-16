@@ -17,7 +17,7 @@ default = []
 # Enables types and helpers that require `alloc` (e.g. `OwnedEvent`).
 alloc   = []
 # Enables `std`-only conveniences. Implies `alloc`.
-std     = []
+std     = ["alloc"]
 # Implements `defmt::Format` on public error / event / response types.
 defmt   = ["dep:defmt"]
 

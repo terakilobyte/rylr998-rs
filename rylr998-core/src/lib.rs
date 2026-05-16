@@ -1,4 +1,4 @@
-#![cfg_attr(not(feature = "alloc"), no_std)]
+#![cfg_attr(not(feature = "std"), no_std)]
 //! Hardware-agnostic protocol layer for the REYAX **RYLR998** LoRa radio
 //! module.
 //!
