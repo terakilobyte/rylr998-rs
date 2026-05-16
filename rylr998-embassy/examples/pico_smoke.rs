@@ -36,7 +36,7 @@ use embassy_time::Duration;
 use heapless::String;
 use rylr998_core::Event;
 
-// rylr-core has a `defmt` feature enabled, so its types reference defmt's
+// rylr998-core has a `defmt` feature enabled, so its types reference defmt's
 // global logger symbols. We don't actually use RTT output anymore, but
 // linking defmt-rtt provides those symbols and keeps the linker happy.
 use defmt_rtt as _;

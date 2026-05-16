@@ -7,11 +7,11 @@ hardware-agnostic protocol layer up to a CLI you can drive from your shell.
 
 | Crate | What it is |
 |---|---|
-| [`rylr998-core`](rylr-core)       | `no_std`, sans-I/O state machine. Encodes `AT+…` commands, parses response and event lines, exposes a `Driver` you feed bytes to and pull events from. |
-| [`rylr998-std`](rylr-std)         | Blocking host driver over `serialport`. The "talk to a USB-connected radio from your laptop" crate. |
-| [`rylr998-tokio`](rylr-tokio)     | Async host driver over `tokio-serial`. A background task owns the protocol; the handle is `Send` + cheap to share. |
-| [`rylr998-embassy`](rylr-embassy) | `no_std` driver over `embedded-io-async`. Works on RP2040 / RP2350 / anything with an async UART (Embassy, etc.). |
-| [`rylr998`](rylr-tool)            | The CLI front-end. `rylr998 info`, `rylr998 send --to N "msg"`, `rylr998 listen`, etc. |
+| [`rylr998-core`](rylr998-core)       | `no_std`, sans-I/O state machine. Encodes `AT+…` commands, parses response and event lines, exposes a `Driver` you feed bytes to and pull events from. |
+| [`rylr998-std`](rylr998-std)         | Blocking host driver over `serialport`. The "talk to a USB-connected radio from your laptop" crate. |
+| [`rylr998-tokio`](rylr998-tokio)     | Async host driver over `tokio-serial`. A background task owns the protocol; the handle is `Send` + cheap to share. |
+| [`rylr998-embassy`](rylr998-embassy) | `no_std` driver over `embedded-io-async`. Works on RP2040 / RP2350 / anything with an async UART (Embassy, etc.). |
+| [`rylr998`](rylr998-tool)            | The CLI front-end. `rylr998 info`, `rylr998 send --to N "msg"`, `rylr998 listen`, etc. |
 
 All five share `rylr998-core`'s state machine, so the wire-format logic is
 written and tested in exactly one place.
@@ -62,7 +62,7 @@ radio.send(2, b"hello").await?;
 cargo test --workspace --exclude rylr998-embassy
 
 # embedded crate (RP2350 by default; switch target for RP2040)
-cd rylr-embassy && cargo check --example pico_smoke
+cd rylr998-embassy && cargo check --example pico_smoke
 ```
 
 ## License

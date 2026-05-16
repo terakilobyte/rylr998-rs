@@ -1,11 +1,11 @@
 [workspace]
 resolver = "3"
 members = [
-    "rylr-core",
-    "rylr-std",
-    "rylr-tokio",
-    "rylr-embassy",
-    "rylr-tool",
+    "rylr998-core",
+    "rylr998-std",
+    "rylr998-tokio",
+    "rylr998-embassy",
+    "rylr998-tool",
 ]
 
 [workspace.package]
@@ -21,8 +21,8 @@ categories    = ["embedded", "no-std", "hardware-support"]
 rust-version  = "1.85"
 
 [workspace.dependencies]
-rylr998-core = { path = "rylr-core", version = "0.1.1" }
-rylr998-std  = { path = "rylr-std",  version = "0.1.1" }
+rylr998-core = { path = "rylr998-core", version = "0.1.1" }
+rylr998-std  = { path = "rylr998-std",  version = "0.1.1" }
 
 heapless    = "0.8"
 serialport  = "4.9"
