@@ -1517,7 +1517,7 @@ checksum = "b39cdef0fa800fc44525c84ccb54a029961a8215f9619753635a9c0d2538d46d"
 
 [[package]]
 name = "rylr998"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "assert_cmd",
  "clap",
@@ -1529,7 +1529,7 @@ dependencies = [
 
 [[package]]
 name = "rylr998-core"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "defmt",
  "heapless 0.8.0",
@@ -1537,7 +1537,7 @@ dependencies = [
 
 [[package]]
 name = "rylr998-embassy"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "cortex-m",
  "cortex-m-rt",
@@ -1554,7 +1554,7 @@ dependencies = [
 
 [[package]]
 name = "rylr998-std"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "rylr998-core",
  "serialport",
@@ -1563,7 +1563,7 @@ dependencies = [
 
 [[package]]
 name = "rylr998-tokio"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "rylr998-core",
  "thiserror",
