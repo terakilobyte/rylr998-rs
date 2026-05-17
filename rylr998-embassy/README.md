@@ -50,11 +50,19 @@ async fn main(_spawner: embassy_executor::Spawner) {
 
 - `Radio::new(uart)` — wrap any `embedded_io_async::Read + Write` UART.
 - AT commands: `ping`, `set_address` / `address`, `set_network_id` /
-  `network_id`, `set_band` / `band`, `set_parameters` / `parameters`,
-  `crfop`, `factory_reset`, `send`.
+  `network_id`, `set_band` / `band`, `set_cpin` / `cpin`,
+  `set_parameters` / `parameters`, `crfop`, `factory_reset`, `send`.
 - `next_event<F, R>(timeout, handler)` — runs a callback for each
   unsolicited event arriving on the wire; returns when the callback yields
   `Some(_)` or the timeout fires.
+
+`set_cpin` accepts exactly 8 ASCII hex bytes in the documented `00000001`
+through `FFFFFFFF` range. Invalid CPIN length is reported by the radio as
+`Error::Radio(5)`, which maps to `RadioError::DataLengthMismatch`.
+`cpin` returns a `heapless::String<8>` containing that password, or an
+empty buffer when the module reports `No Password!`. The manual's `,M`
+memory flag is not exposed here because tested RYLR998 hardware rejects it
+with `+ERR=5`.
 
 `uid` / `version` are omitted in this crate; their `&str` payload would
 require an `alloc`-backed `String` to return owned. If you need them, drop

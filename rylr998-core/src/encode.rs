@@ -39,6 +39,11 @@ pub fn encode(cmd: Command<'_>, buf: &mut [u8]) -> Result<usize, Error> {
             w.lit(b",")?;
             w.u16(preamble as u16)?;
         }
+        Command::GetCpin => w.lit(b"AT+CPIN?")?,
+        Command::SetCpin(pw) => {
+            w.lit(b"AT+CPIN=")?;
+            w.bytes(pw)?;
+        }
         Command::GetCrfop => w.lit(b"AT+CRFOP?")?,
         Command::GetUid => w.lit(b"AT+UID?")?,
         Command::GetVersion => w.lit(b"AT+VER?")?,
@@ -197,6 +202,46 @@ mod tests {
         assert_eq!(
             encode_to_string(Command::SetParameters(p)),
             "AT+PARAMETER=9,7,1,12\r\n"
+        );
+    }
+    #[test]
+    fn get_cpin() {
+        assert_eq!(encode_to_string(Command::GetCpin), "AT+CPIN?\r\n");
+    }
+
+    #[test]
+    fn set_cpin() {
+        assert_eq!(
+            encode_to_string(Command::SetCpin(b"12345678")),
+            "AT+CPIN=12345678\r\n"
+        );
+    }
+    #[test]
+    fn set_cpin_encodes_short_password_for_radio_to_reject() {
+        assert_eq!(
+            encode_to_string(Command::SetCpin(b"hunter2")),
+            "AT+CPIN=hunter2\r\n"
+        );
+    }
+    #[test]
+    fn set_cpin_encodes_zero_password_for_radio_to_reject() {
+        assert_eq!(
+            encode_to_string(Command::SetCpin(b"00000000")),
+            "AT+CPIN=00000000\r\n"
+        );
+    }
+    #[test]
+    fn set_cpin_encodes_non_hex_password_for_radio_to_reject() {
+        assert_eq!(
+            encode_to_string(Command::SetCpin(b"hunter22")),
+            "AT+CPIN=hunter22\r\n"
+        );
+    }
+    #[test]
+    fn set_cpin_encodes_long_password_for_radio_to_reject() {
+        assert_eq!(
+            encode_to_string(Command::SetCpin(b"123456789")),
+            "AT+CPIN=123456789\r\n"
         );
     }
     #[test]

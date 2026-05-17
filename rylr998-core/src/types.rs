@@ -43,6 +43,14 @@ pub enum Command<'a> {
     GetBand,
     /// `AT+BAND=<hz>` — set the carrier frequency, in Hz.
     SetBand(u32),
+    /// `AT+CPIN?` — query the 8-character domain password.
+    GetCpin,
+    /// `AT+CPIN=<password>` — set the 8-character domain password.
+    ///
+    /// The radio replies with `+ERR=5` if the password length is invalid.
+    /// Valid passwords are in the documented `00000001` through `FFFFFFFF`
+    /// range.
+    SetCpin(&'a [u8]),
     /// `AT+PARAMETER?` — query the LoRa PHY parameters.
     GetParameters,
     /// `AT+PARAMETER=<sf>,<bw>,<cr>,<preamble>` — set LoRa PHY parameters.
@@ -78,8 +86,8 @@ pub enum Response<'a> {
     /// `+OK` — the command was accepted (and, for `AT+RESET`, has
     /// finished).
     Ok,
-    /// `+ERR=<code>` — the radio rejected the command. See the REYAX
-    /// AT manual for the meaning of each error code.
+    /// `+ERR=<code>` — the radio rejected the command. Use
+    /// [`RadioError::from_code`] to map known manual codes to descriptions.
     Err(u8),
     /// Reply to [`Command::GetAddress`].
     Address(u16),
@@ -95,6 +103,9 @@ pub enum Response<'a> {
     Uid(&'a str),
     /// Reply to [`Command::GetVersion`]. Borrowed from the driver's line buffer.
     Version(&'a str),
+    /// Reply to [`Command::GetCpin`]. Empty means `No Password!`; otherwise
+    /// this is an 8-character password borrowed from the driver's line buffer.
+    Cpin(&'a str),
 }
 
 /// An unsolicited message from the radio.
@@ -172,6 +183,108 @@ impl fmt::Display for Error {
             Self::RxOverflow => f.write_str("RX buffer is full"),
             Self::Parse => f.write_str("could not parse line from radio"),
         }
+    }
+}
+
+/// Known `+ERR=<code>` values reported by the RYLR998 AT firmware.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum RadioError {
+    /// `+ERR=1` — missing line terminator.
+    MissingLineTerminator,
+    /// `+ERR=2` — command does not start with `AT`.
+    InvalidAtPrefix,
+    /// `+ERR=4` — unknown command.
+    UnknownCommand,
+    /// `+ERR=5` — supplied data does not match the declared or required length.
+    DataLengthMismatch,
+    /// `+ERR=10` — TX timed out.
+    TxTimeout,
+    /// `+ERR=12` — CRC error.
+    Crc,
+    /// `+ERR=13` — TX data exceeds 240 bytes.
+    TxDataTooLong,
+    /// `+ERR=14` — failed to write flash memory.
+    FlashWriteFailed,
+    /// `+ERR=15` — unknown failure.
+    UnknownFailure,
+    /// `+ERR=17` — last TX was not completed.
+    LastTxNotCompleted,
+    /// `+ERR=18` — preamble value is not allowed.
+    InvalidPreamble,
+    /// `+ERR=19` — RX failed with header error.
+    RxHeader,
+    /// `+ERR=20` — smart receiving power-saving time setting is invalid.
+    InvalidSmartReceivingPowerSavingTime,
+}
+
+impl RadioError {
+    /// Map a numeric `+ERR=<code>` response to a known manual entry.
+    #[must_use]
+    pub const fn from_code(code: u8) -> Option<Self> {
+        match code {
+            1 => Some(Self::MissingLineTerminator),
+            2 => Some(Self::InvalidAtPrefix),
+            4 => Some(Self::UnknownCommand),
+            5 => Some(Self::DataLengthMismatch),
+            10 => Some(Self::TxTimeout),
+            12 => Some(Self::Crc),
+            13 => Some(Self::TxDataTooLong),
+            14 => Some(Self::FlashWriteFailed),
+            15 => Some(Self::UnknownFailure),
+            17 => Some(Self::LastTxNotCompleted),
+            18 => Some(Self::InvalidPreamble),
+            19 => Some(Self::RxHeader),
+            20 => Some(Self::InvalidSmartReceivingPowerSavingTime),
+            _ => None,
+        }
+    }
+
+    /// Numeric `+ERR=<code>` value.
+    #[must_use]
+    pub const fn code(self) -> u8 {
+        match self {
+            Self::MissingLineTerminator => 1,
+            Self::InvalidAtPrefix => 2,
+            Self::UnknownCommand => 4,
+            Self::DataLengthMismatch => 5,
+            Self::TxTimeout => 10,
+            Self::Crc => 12,
+            Self::TxDataTooLong => 13,
+            Self::FlashWriteFailed => 14,
+            Self::UnknownFailure => 15,
+            Self::LastTxNotCompleted => 17,
+            Self::InvalidPreamble => 18,
+            Self::RxHeader => 19,
+            Self::InvalidSmartReceivingPowerSavingTime => 20,
+        }
+    }
+
+    /// Short human-readable description from the AT manual.
+    #[must_use]
+    pub const fn description(self) -> &'static str {
+        match self {
+            Self::MissingLineTerminator => "missing line terminator",
+            Self::InvalidAtPrefix => "command does not start with AT",
+            Self::UnknownCommand => "unknown command",
+            Self::DataLengthMismatch => "data length mismatch",
+            Self::TxTimeout => "TX timed out",
+            Self::Crc => "CRC error",
+            Self::TxDataTooLong => "TX data exceeds 240 bytes",
+            Self::FlashWriteFailed => "failed to write flash memory",
+            Self::UnknownFailure => "unknown failure",
+            Self::LastTxNotCompleted => "last TX was not completed",
+            Self::InvalidPreamble => "preamble value is not allowed",
+            Self::RxHeader => "RX failed, header error",
+            Self::InvalidSmartReceivingPowerSavingTime => {
+                "smart receiving power-saving time setting is invalid"
+            }
+        }
+    }
+}
+
+impl fmt::Display for RadioError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "+ERR={}: {}", self.code(), self.description())
     }
 }
 
@@ -279,5 +392,24 @@ mod owned_tests {
     #[test]
     fn ready_into_owned() {
         assert!(matches!(Event::Ready.into_owned(), OwnedEvent::Ready));
+    }
+}
+
+#[cfg(test)]
+mod radio_error_tests {
+    use super::*;
+
+    #[test]
+    fn maps_known_error_code() {
+        let err = RadioError::from_code(5).unwrap();
+        assert_eq!(err, RadioError::DataLengthMismatch);
+        assert_eq!(err.code(), 5);
+        assert_eq!(err.description(), "data length mismatch");
+        assert_eq!(err.to_string(), "+ERR=5: data length mismatch");
+    }
+
+    #[test]
+    fn unknown_error_code_is_none() {
+        assert_eq!(RadioError::from_code(3), None);
     }
 }

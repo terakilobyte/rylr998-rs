@@ -30,8 +30,16 @@ println!("{:?}", event);
 `AsyncRadio::open` / `AsyncRadio::from_port`, plus the AT-command methods:
 
 `ping`, `set_address` / `address`, `set_network_id` / `network_id`,
-`set_band` / `band`, `set_parameters` / `parameters`, `crfop`, `uid`,
-`version`, `factory_reset`, `send`, and `next_event`.
+`set_band` / `band`, `set_cpin` / `cpin`, `set_parameters` /
+`parameters`, `crfop`, `uid`, `version`, `factory_reset`, `send`, and
+`next_event`.
+
+`set_cpin` accepts exactly 8 ASCII hex bytes in the documented `00000001`
+through `FFFFFFFF` range. Invalid CPIN length is reported by the radio as
+`Error::Radio(5)`, which maps to `RadioError::DataLengthMismatch`.
+`cpin` returns that 8-character password, or an empty string when the
+module reports `No Password!`. The manual's `,M` memory flag is not exposed
+here because tested RYLR998 hardware rejects it with `+ERR=5`.
 
 `from_port` accepts any `AsyncRead + AsyncWrite + Send + Unpin + 'static`,
 which makes the crate easy to unit-test against `tokio::io::duplex`.

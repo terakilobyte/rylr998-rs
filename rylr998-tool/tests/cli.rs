@@ -31,3 +31,14 @@ fn missing_port_with_no_devices() {
         .failure()
         .stderr(predicate::str::contains("error:"));
 }
+
+#[test]
+fn provision_help_documents_cpin_without_cpin_persist() {
+    Command::cargo_bin("rylr998")
+        .unwrap()
+        .args(["provision", "--help"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("--cpin"))
+        .stdout(predicate::str::contains("--cpin-persist").not());
+}

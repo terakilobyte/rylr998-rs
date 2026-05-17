@@ -26,4 +26,4 @@ pub use port::discover;
 
 mod radio;
 pub use radio::Radio;
-pub use rylr998_core::{OwnedEvent, RfParams};
+pub use rylr998_core::{OwnedEvent, RadioError, RfParams};

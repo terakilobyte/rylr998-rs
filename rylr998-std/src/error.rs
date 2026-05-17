@@ -33,3 +33,14 @@ pub enum Error {
 
 /// Convenience alias for `Result<T, Error>`.
 pub type Result<T> = std::result::Result<T, Error>;
+
+impl Error {
+    /// Map this error's radio `+ERR=<code>` value to a known manual entry.
+    #[must_use]
+    pub fn radio_error(&self) -> Option<rylr998_core::RadioError> {
+        match self {
+            Self::Radio(code) => rylr998_core::RadioError::from_code(*code),
+            _ => None,
+        }
+    }
+}

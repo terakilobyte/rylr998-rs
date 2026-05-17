@@ -36,7 +36,7 @@
 extern crate alloc;
 
 mod types;
-pub use types::{Command, Error, Event, Poll, Response, RfParams};
+pub use types::{Command, Error, Event, Poll, RadioError, Response, RfParams};
 
 mod encode;
 pub use encode::encode;

@@ -15,7 +15,7 @@ rylr998 [--port /dev/cu.usbserial-X] <command>
 
 Commands:
   info        Print all readable settings
-  provision   Set address + network (and optionally band / RF params)
+  provision   Set address + network (and optionally cpin, band / RF params)
   send        Transmit bytes to a destination address
   listen      Print incoming +RCV events as they arrive
   reset       Issue a factory reset (AT+RESET)

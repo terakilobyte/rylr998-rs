@@ -23,6 +23,7 @@
 //! [`rylr998-std`]: https://crates.io/crates/rylr998-std
 //! [`rylr998-embassy`]: https://crates.io/crates/rylr998-embassy
 
+pub use rylr998_core::RadioError;
 use rylr998_core::{BAUD, Command, Driver, OwnedEvent, Poll, Response, RfParams};
 use std::path::Path;
 use std::time::Duration;
@@ -84,6 +85,8 @@ pub enum OwnedResponse {
     Uid(String),
     /// Reply to a `GetVersion` request.
     Version(String),
+    /// Reply to a `GetCpin` request. Empty means `No Password!`.
+    Cpin(String),
 }
 
 impl From<Response<'_>> for OwnedResponse {
@@ -98,6 +101,7 @@ impl From<Response<'_>> for OwnedResponse {
             Response::Crfop(n) => Self::Crfop(n),
             Response::Uid(s) => Self::Uid(s.to_string()),
             Response::Version(s) => Self::Version(s.to_string()),
+            Response::Cpin(s) => Self::Cpin(s.to_owned()),
         }
     }
 }
@@ -123,6 +127,10 @@ pub enum OwnedCommand {
     GetBand,
     /// See [`Command::SetBand`].
     SetBand(u32),
+    /// See [`Command::GetCpin`].
+    GetCpin,
+    /// See [`Command::SetCpin`].
+    SetCpin(Vec<u8>),
     /// See [`Command::GetParameters`].
     GetParameters,
     /// See [`Command::SetParameters`].
@@ -154,6 +162,8 @@ impl OwnedCommand {
             Self::SetNetworkId(n) => Command::SetNetworkId(*n),
             Self::GetBand => Command::GetBand,
             Self::SetBand(n) => Command::SetBand(*n),
+            Self::GetCpin => Command::GetCpin,
+            Self::SetCpin(password) => Command::SetCpin(password),
             Self::GetParameters => Command::GetParameters,
             Self::SetParameters(p) => Command::SetParameters(*p),
             Self::GetCrfop => Command::GetCrfop,
@@ -167,6 +177,17 @@ impl OwnedCommand {
 
 /// Convenience alias for `Result<T, Error>`.
 pub type Result<T> = std::result::Result<T, Error>;
+
+impl Error {
+    /// Map this error's radio `+ERR=<code>` value to a known manual entry.
+    #[must_use]
+    pub fn radio_error(&self) -> Option<rylr998_core::RadioError> {
+        match self {
+            Self::Radio(code) => rylr998_core::RadioError::from_code(*code),
+            _ => None,
+        }
+    }
+}
 
 /// One queued unit of work for the background driver task: a command,
 /// the reply channel to send its [`OwnedResponse`] back on, and the
@@ -322,6 +343,33 @@ impl AsyncRadio {
     pub async fn band(&mut self) -> Result<u32> {
         match self.request(OwnedCommand::GetBand, DEFAULT_TIMEOUT).await? {
             OwnedResponse::Band(n) => Ok(n),
+            OwnedResponse::Err(n) => Err(Error::Radio(n)),
+            _ => Err(Error::Core(rylr998_core::Error::Parse)),
+        }
+    }
+
+    /// Query the 8-character domain password (`AT+CPIN?`).
+    ///
+    /// Returns an empty string when the radio reports `No Password!`.
+    pub async fn cpin(&mut self) -> Result<String> {
+        match self.request(OwnedCommand::GetCpin, DEFAULT_TIMEOUT).await? {
+            OwnedResponse::Cpin(s) => Ok(s),
+            OwnedResponse::Err(n) => Err(Error::Radio(n)),
+            _ => Err(Error::Core(rylr998_core::Error::Parse)),
+        }
+    }
+
+    /// Set the 8-character domain password (`AT+CPIN=<password>`).
+    ///
+    /// The radio replies with `+ERR=5` if the password length is invalid.
+    /// Valid passwords are 8 ASCII hex bytes in the documented `00000001`
+    /// through `FFFFFFFF` range.
+    pub async fn set_cpin(&mut self, password: &[u8]) -> Result<()> {
+        match self
+            .request(OwnedCommand::SetCpin(password.into()), DEFAULT_TIMEOUT)
+            .await?
+        {
+            OwnedResponse::Ok => Ok(()),
             OwnedResponse::Err(n) => Err(Error::Radio(n)),
             _ => Err(Error::Core(rylr998_core::Error::Parse)),
         }
@@ -637,6 +685,47 @@ mod tests {
         read_and_expect(&mut wire, b"AT+BAND?\r\n").await;
         wire.write_all(b"+BAND=915000000\r\n").await.unwrap();
         assert_eq!(radio_fut.await.unwrap().unwrap(), 915_000_000);
+    }
+
+    #[tokio::test]
+    async fn set_cpin() {
+        let (radio_side, mut wire) = tokio::io::duplex(4096);
+        let mut radio = AsyncRadio::from_port(radio_side);
+        let radio_fut = tokio::spawn(async move { radio.set_cpin(b"EEDCAA90").await });
+        read_and_expect(&mut wire, b"AT+CPIN=EEDCAA90\r\n").await;
+        wire.write_all(b"+OK\r\n").await.unwrap();
+        radio_fut.await.unwrap().unwrap();
+    }
+
+    #[tokio::test]
+    async fn set_cpin_propagates_radio_error_5_for_wrong_length() {
+        let (radio_side, mut wire) = tokio::io::duplex(4096);
+        let mut radio = AsyncRadio::from_port(radio_side);
+        let radio_fut = tokio::spawn(async move { radio.set_cpin(b"hunter2").await });
+        read_and_expect(&mut wire, b"AT+CPIN=hunter2\r\n").await;
+        wire.write_all(b"+ERR=5\r\n").await.unwrap();
+        let err = radio_fut.await.unwrap().unwrap_err();
+        assert!(matches!(err, Error::Radio(5)));
+    }
+
+    #[tokio::test]
+    async fn cpin() {
+        let (radio_side, mut wire) = tokio::io::duplex(4096);
+        let mut radio = AsyncRadio::from_port(radio_side);
+        let radio_fut = tokio::spawn(async move { radio.cpin().await });
+        read_and_expect(&mut wire, b"AT+CPIN?\r\n").await;
+        wire.write_all(b"+CPIN=eedcaa90\r\n").await.unwrap();
+        assert_eq!(radio_fut.await.unwrap().unwrap(), "eedcaa90");
+    }
+
+    #[tokio::test]
+    async fn cpin_no_password() {
+        let (radio_side, mut wire) = tokio::io::duplex(4096);
+        let mut radio = AsyncRadio::from_port(radio_side);
+        let radio_fut = tokio::spawn(async move { radio.cpin().await });
+        read_and_expect(&mut wire, b"AT+CPIN?\r\n").await;
+        wire.write_all(b"+CPIN=No Password!\r\n").await.unwrap();
+        assert_eq!(radio_fut.await.unwrap().unwrap(), "");
     }
 
     #[tokio::test]

@@ -1,6 +1,6 @@
 mod common;
 
-use common::{pair, Endpoint, RadioSide, WireSide};
+use common::{Endpoint, RadioSide, WireSide, pair};
 use rylr998_std::Radio;
 
 fn make() -> (Radio<Endpoint>, WireSide) {
@@ -43,6 +43,47 @@ fn get_address() {
 }
 
 #[test]
+fn set_cpin() {
+    let (mut radio, mut wire) = make();
+    let handle = std::thread::spawn(move || radio.set_cpin(b"EEDCAA90"));
+    std::thread::sleep(std::time::Duration::from_millis(50));
+    assert_eq!(wire.drain_outgoing(), b"AT+CPIN=EEDCAA90\r\n");
+    wire.say(b"+OK\r\n");
+    handle.join().unwrap().unwrap();
+}
+
+#[test]
+fn set_cpin_propagates_radio_error_5_for_wrong_length() {
+    let (mut radio, mut wire) = make();
+    let handle = std::thread::spawn(move || radio.set_cpin(b"hunter2"));
+    std::thread::sleep(std::time::Duration::from_millis(50));
+    assert_eq!(wire.drain_outgoing(), b"AT+CPIN=hunter2\r\n");
+    wire.say(b"+ERR=5\r\n");
+    let err = handle.join().unwrap().unwrap_err();
+    assert!(matches!(err, rylr998_std::Error::Radio(5)));
+}
+
+#[test]
+fn cpin() {
+    let (mut radio, mut wire) = make();
+    let handle = std::thread::spawn(move || radio.cpin());
+    std::thread::sleep(std::time::Duration::from_millis(50));
+    assert_eq!(wire.drain_outgoing(), b"AT+CPIN?\r\n");
+    wire.say(b"+CPIN=eedcaa90\r\n");
+    assert_eq!(handle.join().unwrap().unwrap(), "eedcaa90");
+}
+
+#[test]
+fn cpin_no_password() {
+    let (mut radio, mut wire) = make();
+    let handle = std::thread::spawn(move || radio.cpin());
+    std::thread::sleep(std::time::Duration::from_millis(50));
+    assert_eq!(wire.drain_outgoing(), b"AT+CPIN?\r\n");
+    wire.say(b"+CPIN=No Password!\r\n");
+    assert_eq!(handle.join().unwrap().unwrap(), "");
+}
+
+#[test]
 fn err_response_propagates() {
     let (mut radio, mut wire) = make();
     let handle = std::thread::spawn(move || radio.set_address(0xFFFF));
@@ -59,7 +100,12 @@ fn next_event_returns_recv() {
     wire.say(b"+RCV=2,5,hello,-42,8\r\n");
     let ev = radio.next_event(std::time::Duration::from_secs(1)).unwrap();
     match ev {
-        rylr998_std::OwnedEvent::Recv { from, data, rssi, snr } => {
+        rylr998_std::OwnedEvent::Recv {
+            from,
+            data,
+            rssi,
+            snr,
+        } => {
             assert_eq!(from, 2);
             assert_eq!(data, b"hello");
             assert_eq!(rssi, -42);

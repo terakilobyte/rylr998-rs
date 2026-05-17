@@ -193,6 +193,26 @@ impl<P: Read + Write> Radio<P> {
         })
     }
 
+    /// Query the 8-character domain password. Empty means `No Password!`.
+    pub fn cpin(&mut self) -> Result<String> {
+        self.driver.submit(Command::GetCpin)?;
+        self.pump_until(Self::deadline(DEFAULT_TIMEOUT), |r| match r {
+            Response::Cpin(s) => Some(Ok(s.to_owned())),
+            Response::Err(n) => Some(Err(Error::Radio(n))),
+            _ => None,
+        })
+    }
+
+    /// Set the 8-character domain password.
+    ///
+    /// The radio replies with `+ERR=5` if the password length is invalid.
+    /// Valid passwords are 8 ASCII hex bytes in the documented `00000001`
+    /// through `FFFFFFFF` range.
+    pub fn set_cpin(&mut self, password: &[u8]) -> Result<()> {
+        self.driver.submit(Command::SetCpin(password))?;
+        self.pump_until(Self::deadline(DEFAULT_TIMEOUT), wait_ok)
+    }
+
     /// Set the LoRa PHY parameters (`AT+PARAMETER=<sf>,<bw>,<cr>,<preamble>`).
     pub fn set_parameters(&mut self, p: rylr998_core::RfParams) -> Result<()> {
         self.driver.submit(Command::SetParameters(p))?;

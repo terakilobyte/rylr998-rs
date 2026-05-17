@@ -9,6 +9,7 @@ pub fn info(mut r: R) -> Result<()> {
     println!("address     {:?}", r.address()?);
     println!("network_id  {:?}", r.network_id()?);
     println!("band        {:?}", r.band()?);
+    println!("cpin        {:?}", r.cpin()?);
     let p = r.parameters()?;
     println!(
         "parameters  sf={} bw={} cr={} preamble={}",
@@ -24,6 +25,7 @@ pub fn provision(
     mut r: R,
     address: u16,
     net: u8,
+    cpin: Option<String>,
     band: Option<u32>,
     params: Option<RfParams>,
 ) -> Result<()> {
@@ -34,6 +36,12 @@ pub fn provision(
     r.set_network_id(net)?;
     if r.network_id()? != net {
         return Err(verify_failed("network_id"));
+    }
+    if let Some(s) = cpin.as_deref() {
+        r.set_cpin(s.as_bytes())?;
+        if !r.cpin()?.eq_ignore_ascii_case(s) {
+            return Err(verify_failed("cpin"));
+        }
     }
     if let Some(b) = band {
         r.set_band(b)?;
@@ -48,9 +56,13 @@ pub fn provision(
         }
     }
     println!(
-        "provisioned address={} net={} band={} params={}",
+        "provisioned address={} net={} cpin={} band={} params={}",
         address,
         net,
+        match cpin {
+            Some(ref s) => s.clone(),
+            None => "(unchanged)".into(),
+        },
         band.map(|b| b.to_string())
             .unwrap_or_else(|| "(unchanged)".into()),
         match params {

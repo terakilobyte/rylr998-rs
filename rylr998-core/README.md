@@ -35,6 +35,27 @@ d.push_rx(b"+OK\r\n").unwrap();
 assert!(matches!(d.poll(), Poll::Response(Response::Ok)));
 ```
 
+## CPIN Behavior
+
+`Command::SetCpin` encodes `AT+CPIN=<password>` and requires the password
+to be exactly 8 ASCII hex characters in the documented `00000001` through
+`FFFFFFFF` range. The radio reports invalid CPIN length as `+ERR=5`, which
+maps to `RadioError::DataLengthMismatch`.
+
+The manual also documents `AT+CPIN=<password>,M`, but tested RYLR998
+hardware rejects that form with `+ERR=5`; this crate intentionally exposes
+only the working `AT+CPIN=<password>` setter.
+
+`Response::Cpin("")` represents the radio's `+CPIN=No Password!` reply.
+Any non-empty `Response::Cpin` value is an 8-character password borrowed
+from the driver's line buffer.
+
+## Radio Error Codes
+
+`Response::Err(code)` carries the raw `+ERR=<code>` value. Use
+`RadioError::from_code(code)` to map known manual codes to stable enum
+variants and descriptions.
+
 ## Features
 
 - `alloc` — exposes `OwnedEvent`, a heap-backed variant of `Event` you can

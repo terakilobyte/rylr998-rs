@@ -34,6 +34,7 @@ pub(crate) enum QueryKey {
     Crfop,
     Uid,
     Version,
+    Cpin,
 }
 
 /// State machine that turns RYLR998 protocol traffic into a sequence of
@@ -116,6 +117,7 @@ impl Driver {
             Command::GetCrfop => AwaitKind::Query(QueryKey::Crfop),
             Command::GetUid => AwaitKind::Query(QueryKey::Uid),
             Command::GetVersion => AwaitKind::Query(QueryKey::Version),
+            Command::GetCpin => AwaitKind::Query(QueryKey::Cpin),
             _ => AwaitKind::Ack,
         };
         self.awaiting_ready_as_ok = matches!(cmd, Command::FactoryReset);
@@ -202,6 +204,7 @@ impl Driver {
             AwaitKind::Query(QueryKey::Crfop) => line.starts_with(b"+CRFOP="),
             AwaitKind::Query(QueryKey::Uid) => line.starts_with(b"+UID="),
             AwaitKind::Query(QueryKey::Version) => line.starts_with(b"+VER="),
+            AwaitKind::Query(QueryKey::Cpin) => line.starts_with(b"+CPIN="),
         }
     }
 
@@ -376,6 +379,27 @@ mod poll_tests {
             Poll::Response(Response::Address(5)) => {}
             other => panic!("unexpected: {:?}", other),
         }
+    }
+
+    #[test]
+    fn get_cpin_returns_value() {
+        let mut d = Driver::new();
+        d.submit(Command::GetCpin).unwrap();
+        assert_eq!(drain_tx(&mut d), b"AT+CPIN?\r\n");
+        d.push_rx(b"+CPIN=12345678\r\n").unwrap();
+        match d.poll() {
+            Poll::Response(Response::Cpin("12345678")) => {}
+            other => panic!("unexpected: {:?}", other),
+        }
+    }
+
+    #[test]
+    fn set_cpin_round_trip() {
+        let mut d = Driver::new();
+        d.submit(Command::SetCpin(b"12345678")).unwrap();
+        assert_eq!(drain_tx(&mut d), b"AT+CPIN=12345678\r\n");
+        d.push_rx(b"+OK\r\n").unwrap();
+        assert!(matches!(d.poll(), Poll::Response(Response::Ok)));
     }
 
     #[test]

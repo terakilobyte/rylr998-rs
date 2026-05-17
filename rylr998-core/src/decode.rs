@@ -16,6 +16,7 @@ impl Prefix {
     const BAND: &'static [u8; 6] = b"+BAND=";
     const PARAMETER: &'static [u8; 11] = b"+PARAMETER=";
     const CRFOP: &'static [u8; 7] = b"+CRFOP=";
+    const CPIN: &'static [u8; 6] = b"+CPIN=";
     const UID: &'static [u8; 5] = b"+UID=";
     const VER: &'static [u8; 5] = b"+VER=";
     const READY: &'static [u8; 6] = b"+READY";
@@ -34,6 +35,21 @@ where
 
 fn parse_str(bytes: &[u8]) -> Result<&str, Error> {
     core::str::from_utf8(bytes).map_err(|_| Error::Parse)
+}
+
+fn parse_cpin(bytes: &[u8]) -> Result<&str, Error> {
+    if bytes == b"No Password!" {
+        return Ok("");
+    }
+
+    if bytes.len() != 8
+        || !bytes.iter().all(u8::is_ascii_hexdigit)
+        || bytes.iter().all(|b| *b == b'0')
+    {
+        return Err(Error::Parse);
+    }
+
+    parse_str(bytes)
 }
 
 /// Parse a complete response line (no `\r\n`).
@@ -76,6 +92,9 @@ pub fn parse_response<'a>(line: &'a [u8]) -> Result<Response<'a>, Error> {
     }
     if let Some(bytes) = line.strip_prefix(Prefix::CRFOP) {
         return Ok(Response::Crfop(parse_bytes(bytes)?));
+    }
+    if let Some(bytes) = line.strip_prefix(Prefix::CPIN) {
+        return Ok(Response::Cpin(parse_cpin(bytes)?));
     }
     if let Some(bytes) = line.strip_prefix(Prefix::UID) {
         return Ok(Response::Uid(parse_str(bytes)?));
@@ -195,6 +214,32 @@ mod tests {
     #[test]
     fn crfop() {
         assert_eq!(parse_response(b"+CRFOP=22"), Ok(Response::Crfop(22)));
+    }
+    #[test]
+    fn cpin() {
+        assert_eq!(
+            parse_response(b"+CPIN=12345678"),
+            Ok(Response::Cpin("12345678"))
+        );
+    }
+    #[test]
+    fn cpin_no_password() {
+        assert_eq!(
+            parse_response(b"+CPIN=No Password!"),
+            Ok(Response::Cpin(""))
+        );
+    }
+    #[test]
+    fn cpin_rejects_short_password() {
+        assert_eq!(parse_response(b"+CPIN=hunter2"), Err(Error::Parse));
+    }
+    #[test]
+    fn cpin_rejects_non_hex_password() {
+        assert_eq!(parse_response(b"+CPIN=password"), Err(Error::Parse));
+    }
+    #[test]
+    fn cpin_rejects_zero_password() {
+        assert_eq!(parse_response(b"+CPIN=00000000"), Err(Error::Parse));
     }
     #[test]
     fn uid() {

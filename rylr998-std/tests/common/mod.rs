@@ -67,7 +67,10 @@ pub fn pair() -> (RadioSide, WireSide) {
     let a = Pipe::new();
     let b = Pipe::new();
     (
-        RadioSide(Endpoint { rx: a.clone(), tx: b.clone() }),
+        RadioSide(Endpoint {
+            rx: a.clone(),
+            tx: b.clone(),
+        }),
         WireSide(Endpoint { rx: b, tx: a }),
     )
 }

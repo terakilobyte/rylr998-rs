@@ -51,13 +51,19 @@ mod tests {
 
     #[test]
     fn no_match_is_no_device() {
-        let r = decide(filter(vec!["/dev/ttyS0".into(), "/dev/cu.Bluetooth-Incoming-Port".into()]));
+        let r = decide(filter(vec![
+            "/dev/ttyS0".into(),
+            "/dev/cu.Bluetooth-Incoming-Port".into(),
+        ]));
         assert!(matches!(r, Err(Error::NoDevice)));
     }
 
     #[test]
     fn one_match_returns_path() {
-        let r = decide(filter(vec!["/dev/cu.usbserial-A1".into(), "/dev/cu.Bluetooth-Incoming-Port".into()]));
+        let r = decide(filter(vec![
+            "/dev/cu.usbserial-A1".into(),
+            "/dev/cu.Bluetooth-Incoming-Port".into(),
+        ]));
         assert_eq!(r.unwrap(), PathBuf::from("/dev/cu.usbserial-A1"));
     }
 

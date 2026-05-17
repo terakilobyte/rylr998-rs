@@ -7,7 +7,7 @@ mod commands;
 #[command(
     name = "rylr998",
     about = "Configure and drive REYAX RYLR998 LoRa radio modules from the command line.",
-    version,
+    version
 )]
 struct Cli {
     /// Override auto-discovery of /dev/cu.usbserial*.
@@ -28,6 +28,9 @@ enum Cmd {
         address: u16,
         #[arg(long)]
         net: u8,
+        /// Domain password. The radio returns error 5 if the length is invalid.
+        #[arg(long)]
+        cpin: Option<String>,
         #[arg(long)]
         band: Option<u32>,
         /// "S,B,C,P" -- four small ints
@@ -49,7 +52,10 @@ enum Cmd {
 fn parse_params(s: &str) -> Result<rylr998_std::RfParams, String> {
     let parts: Vec<&str> = s.split(',').collect();
     if parts.len() != 4 {
-        return Err(format!("expected S,B,C,P (4 ints), got {} parts", parts.len()));
+        return Err(format!(
+            "expected S,B,C,P (4 ints), got {} parts",
+            parts.len()
+        ));
     }
     let n = |s: &str| s.parse::<u8>().map_err(|e| e.to_string());
     Ok(rylr998_std::RfParams {
@@ -73,9 +79,13 @@ fn main() {
         }?;
         match cli.cmd {
             Cmd::Info => commands::info(radio),
-            Cmd::Provision { address, net, band, params } => {
-                commands::provision(radio, address, net, band, params)
-            }
+            Cmd::Provision {
+                address,
+                net,
+                cpin,
+                band,
+                params,
+            } => commands::provision(radio, address, net, cpin, band, params),
             Cmd::Reset => commands::reset(radio),
             Cmd::Send { to, message } => commands::send(radio, to, &message),
             Cmd::Listen => commands::listen(radio),

@@ -7,8 +7,9 @@
 //! [`rylr998-std`](https://crates.io/crates/rylr998-std) /
 //! [`rylr998-tokio`](https://crates.io/crates/rylr998-tokio):
 //! `ping`, `set_address` / `address`, `set_network_id` / `network_id`,
-//! `set_band` / `band`, `set_parameters` / `parameters`, `crfop`,
-//! `factory_reset`, `send`, and a callback-style `next_event`.
+//! `set_band` / `band`, `set_cpin` / `cpin`, `set_parameters` /
+//! `parameters`, `crfop`, `factory_reset`, `send`, and a callback-style
+//! `next_event`.
 //!
 //! ## Example
 //!
@@ -26,6 +27,7 @@
 //! See `examples/pico_smoke.rs` for an end-to-end Pico 2 + RYLR998 sketch.
 
 use embassy_time::{Duration, Instant};
+pub use rylr998_core::RadioError;
 use rylr998_core::{Command, Driver, Event, Poll, Response, RfParams};
 
 const DEFAULT_TIMEOUT: Duration = Duration::from_secs(1);
@@ -83,7 +85,12 @@ fn wait_ok<E>(r: Response<'_>) -> Option<Result<(), Error<E>>> {
 
 fn log_event(e: Event<'_>) {
     match e {
-        Event::Recv { from, data, rssi, snr } => {
+        Event::Recv {
+            from,
+            data,
+            rssi,
+            snr,
+        } => {
             defmt::info!(
                 "recv from={} len={} rssi={} snr={}",
                 from,
@@ -115,13 +122,15 @@ where
     /// Send `AT` and await `+OK`. Useful as a liveness check.
     pub async fn ping(&mut self) -> Result<(), Error<UART::Error>> {
         self.driver.submit(Command::Ping)?;
-        self.pump_until(Self::deadline(DEFAULT_TIMEOUT), wait_ok).await
+        self.pump_until(Self::deadline(DEFAULT_TIMEOUT), wait_ok)
+            .await
     }
 
     /// Set this node's address (`AT+ADDRESS=<n>`).
     pub async fn set_address(&mut self, n: u16) -> Result<(), Error<UART::Error>> {
         self.driver.submit(Command::SetAddress(n))?;
-        self.pump_until(Self::deadline(DEFAULT_TIMEOUT), wait_ok).await
+        self.pump_until(Self::deadline(DEFAULT_TIMEOUT), wait_ok)
+            .await
     }
 
     /// Query this node's address (`AT+ADDRESS?`).
@@ -139,7 +148,8 @@ where
     /// to communicate.
     pub async fn set_network_id(&mut self, n: u8) -> Result<(), Error<UART::Error>> {
         self.driver.submit(Command::SetNetworkId(n))?;
-        self.pump_until(Self::deadline(DEFAULT_TIMEOUT), wait_ok).await
+        self.pump_until(Self::deadline(DEFAULT_TIMEOUT), wait_ok)
+            .await
     }
 
     /// Query the network ID (`AT+NETWORKID?`).
@@ -156,7 +166,8 @@ where
     /// Set the carrier frequency in Hz (`AT+BAND=<hz>`).
     pub async fn set_band(&mut self, hz: u32) -> Result<(), Error<UART::Error>> {
         self.driver.submit(Command::SetBand(hz))?;
-        self.pump_until(Self::deadline(DEFAULT_TIMEOUT), wait_ok).await
+        self.pump_until(Self::deadline(DEFAULT_TIMEOUT), wait_ok)
+            .await
     }
 
     /// Query the carrier frequency in Hz (`AT+BAND?`).
@@ -170,10 +181,41 @@ where
         .await
     }
 
+    /// Query the 8-character domain password (`AT+CPIN?`).
+    ///
+    /// Returns an empty string when the radio reports `No Password!`.
+    pub async fn cpin(&mut self) -> Result<heapless::String<8>, Error<UART::Error>> {
+        self.driver.submit(Command::GetCpin)?;
+        self.pump_until(Self::deadline(DEFAULT_TIMEOUT), |r| match r {
+            Response::Cpin(s) => {
+                let mut out = heapless::String::new();
+                match out.push_str(s) {
+                    Ok(()) => Some(Ok(out)),
+                    Err(_) => Some(Err(Error::Core(rylr998_core::Error::Parse))),
+                }
+            }
+            Response::Err(n) => Some(Err(Error::Radio(n))),
+            _ => None,
+        })
+        .await
+    }
+
+    /// Set the 8-character domain password (`AT+CPIN=<password>`).
+    ///
+    /// The radio replies with `+ERR=5` if the password length is invalid.
+    /// Valid passwords are 8 ASCII hex bytes in the documented `00000001`
+    /// through `FFFFFFFF` range.
+    pub async fn set_cpin(&mut self, password: &[u8]) -> Result<(), Error<UART::Error>> {
+        self.driver.submit(Command::SetCpin(password))?;
+        self.pump_until(Self::deadline(DEFAULT_TIMEOUT), wait_ok)
+            .await
+    }
+
     /// Set LoRa PHY parameters (`AT+PARAMETER=<sf>,<bw>,<cr>,<preamble>`).
     pub async fn set_parameters(&mut self, p: RfParams) -> Result<(), Error<UART::Error>> {
         self.driver.submit(Command::SetParameters(p))?;
-        self.pump_until(Self::deadline(DEFAULT_TIMEOUT), wait_ok).await
+        self.pump_until(Self::deadline(DEFAULT_TIMEOUT), wait_ok)
+            .await
     }
 
     /// Query the LoRa PHY parameters (`AT+PARAMETER?`).
@@ -206,14 +248,16 @@ where
     /// Uses an extended (2 s) timeout for the post-reset settling time.
     pub async fn factory_reset(&mut self) -> Result<(), Error<UART::Error>> {
         self.driver.submit(Command::FactoryReset)?;
-        self.pump_until(Self::deadline(FACTORY_RESET_TIMEOUT), wait_ok).await
+        self.pump_until(Self::deadline(FACTORY_RESET_TIMEOUT), wait_ok)
+            .await
     }
 
     /// Transmit `data` to the node at address `to`
     /// (`AT+SEND=<to>,<len>,<data>`). Use `to = 0` to broadcast.
     pub async fn send(&mut self, to: u16, data: &[u8]) -> Result<(), Error<UART::Error>> {
         self.driver.submit(Command::Send { to, data })?;
-        self.pump_until(Self::deadline(DEFAULT_TIMEOUT), wait_ok).await
+        self.pump_until(Self::deadline(DEFAULT_TIMEOUT), wait_ok)
+            .await
     }
 
     /// Wait for the next unsolicited event. The handler is invoked with each
