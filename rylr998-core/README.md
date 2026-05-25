@@ -35,6 +35,23 @@ d.push_rx(b"+OK\r\n").unwrap();
 assert!(matches!(d.poll(), Poll::Response(Response::Ok)));
 ```
 
+## Driver contract
+
+`Driver` is single-in-flight: `submit` returns `Err(Error::Busy)` if a
+prior command hasn't yet resolved to a `Response`. Typical loop:
+
+1. `submit(Command::…)` once.
+2. Pump `poll()` in a loop: write any `Poll::NeedTx(bytes)` to the wire
+   then `ack_tx(n)`, surface `Poll::Response` to your caller, and forward
+   `Poll::Event` somewhere durable (the inner `Event<'_>` borrows the
+   driver's line buffer and is invalidated on the next `poll`). Stop on
+   `Poll::Idle`.
+3. Feed RX bytes back in with `push_rx`, then resume polling.
+
+Events can arrive unsolicited between commands — drive `poll()` even
+when no command is in flight if you care about `+RCV`. The I/O-bearing
+host crates do this for you.
+
 ## CPIN Behavior
 
 `Command::SetCpin` encodes `AT+CPIN=<password>` and requires the password
@@ -54,7 +71,8 @@ from the driver's line buffer.
 
 `Response::Err(code)` carries the raw `+ERR=<code>` value. Use
 `RadioError::from_code(code)` to map known manual codes to stable enum
-variants and descriptions.
+variants and descriptions. The full code table lives in the
+[workspace README](https://github.com/terakilobyte/rylr998-rs#radio-error-codes).
 
 ## Features
 
