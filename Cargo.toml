@@ -9,7 +9,7 @@ members = [
 ]
 
 [workspace.package]
-version       = "0.3.0"
+version       = "0.3.1"
 edition       = "2024"
 authors       = ["Nathan Leniz <nathan.leniz@gmail.com>"]
 license       = "MIT OR Apache-2.0"
@@ -21,8 +21,8 @@ categories    = ["embedded", "no-std", "hardware-support"]
 rust-version  = "1.85"
 
 [workspace.dependencies]
-rylr998-core = { path = "rylr998-core", version = "0.3.0" }
-rylr998-std  = { path = "rylr998-std",  version = "0.3.0" }
+rylr998-core = { path = "rylr998-core", version = "0.3.1" }
+rylr998-std  = { path = "rylr998-std",  version = "0.3.1" }
 
 heapless    = "0.8"
 serialport  = "4.9"
